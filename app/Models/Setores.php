@@ -12,7 +12,7 @@ class Setores extends Model
     protected $table = 'setores';
 
     protected $fillable = [
-        'unidade_id',
+        'polo_id',
         'nome',
         'descricao',
         'status',
@@ -25,21 +25,19 @@ class Setores extends Model
     ];
 
     /**
-     * Relacionamento com unidade
-     */
-    public function unidade()
-    {
-        return $this->belongsTo(Unidade::class, 'unidade_id');
-    }
-
-    /**
-     * Compatibilidade legada: alias para `unidade()`.
-     * Alguns trechos do código e controladores antigos ainda chamam ->polo.
-     * Mantemos este alias para evitar erros 500 enquanto o código for migrado.
+     * Relacionamento com polo
      */
     public function polo()
     {
-        return $this->unidade();
+        return $this->belongsTo(Polo::class, 'polo_id');
+    }
+
+    /**
+     * Compatibilidade legada: alias para `polo()`.
+     */
+    public function unidade()
+    {
+        return $this->polo();
     }
 
     /**
@@ -65,7 +63,7 @@ class Setores extends Model
      */
     public function estoques()
     {
-        return $this->hasMany(Estoque::class, 'unidade_id');
+        return $this->hasMany(Estoque::class, 'polo_id');
     }
 
     /**
@@ -80,10 +78,10 @@ class Setores extends Model
     }
 
     /**
-     * Fornecedores relacionados a este setor (como solicitante)
+     * Distribuidores relacionados a este setor (como solicitante)
      */
-    public function fornecedoresRelacionados()
+    public function distribuidoresRelacionados()
     {
-        return $this->hasMany(SetorFornecedor::class, 'setor_solicitante_id');
+        return $this->hasMany(SetorDistribuidor::class, 'setor_solicitante_id');
     }
 }
