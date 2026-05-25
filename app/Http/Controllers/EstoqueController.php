@@ -32,7 +32,7 @@ class EstoqueController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Este setor não possui controle de estoque.'
-                ], 400);
+                ], 200);
             }
 
             // Buscar estoque do setor com informações do produto
