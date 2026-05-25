@@ -59,6 +59,13 @@ class RelatoriosController extends Controller
                 'itens.produto.grupoProduto:id,nome,tipo'
             ]);
 
+            // Restringir aos setores que o usuário autenticado tem acesso
+            $user = auth()->user();
+            $setoresPermitidos = \Illuminate\Support\Facades\DB::table('usuario_setor')
+                ->where('usuario_id', $user->id)
+                ->pluck('setor_id');
+            $query->whereIn('setor_id', $setoresPermitidos);
+
             // Aplicar filtros se fornecidos
             $filters = $data['filters'] ?? [];
 
@@ -168,6 +175,16 @@ class RelatoriosController extends Controller
                 'itens.produto.unidadeMedida:id,nome',
                 'itens.produto.grupoProduto:id,nome,tipo'
             ]);
+
+            // Restringir aos setores que o usuário autenticado tem acesso
+            $user = auth()->user();
+            $setoresPermitidos = \Illuminate\Support\Facades\DB::table('usuario_setor')
+                ->where('usuario_id', $user->id)
+                ->pluck('setor_id');
+            $query->where(function ($q) use ($setoresPermitidos) {
+                $q->whereIn('setor_origem_id', $setoresPermitidos)
+                  ->orWhereIn('setor_destino_id', $setoresPermitidos);
+            });
 
             // Aplicar filtros se fornecidos
             $filters = $data['filters'] ?? [];
@@ -318,6 +335,16 @@ class RelatoriosController extends Controller
                 'itens.produto.grupoProduto:id,nome,tipo'
             ])->where('tipo', 'S');
 
+            // Restringir aos setores que o usuário autenticado tem acesso
+            $user = auth()->user();
+            $setoresPermitidos = \Illuminate\Support\Facades\DB::table('usuario_setor')
+                ->where('usuario_id', $user->id)
+                ->pluck('setor_id');
+            $query->where(function ($q) use ($setoresPermitidos) {
+                $q->whereIn('setor_origem_id', $setoresPermitidos)
+                  ->orWhereIn('setor_destino_id', $setoresPermitidos);
+            });
+
             // Aplicar filtros se fornecidos
             $filters = $data['filters'] ?? [];
 
@@ -460,6 +487,13 @@ class RelatoriosController extends Controller
             $dateFrom = $filters['date_from'] ?? date('Y-m-d');
             $dateTo = $filters['date_to'] ?? $dateFrom;
 
+            // Restringir aos setores que o usuário autenticado tem acesso
+            $user = auth()->user();
+            $setoresPermitidos = \Illuminate\Support\Facades\DB::table('usuario_setor')
+                ->where('usuario_id', $user->id)
+                ->pluck('setor_id')
+                ->toArray();
+
             // Query agregada: agrupa por data e produto, soma quantidades
             $query = DB::table('item_movimentacao as im')
                 ->join('movimentacao as m', 'im.movimentacao_id', '=', 'm.id')
@@ -482,7 +516,11 @@ class RelatoriosController extends Controller
                 ->where('m.tipo', 'S') // Apenas saídas
                 ->where('m.status_solicitacao', 'A') // Apenas aprovadas
                 ->whereDate('m.data_hora', '>=', $dateFrom)
-                ->whereDate('m.data_hora', '<=', $dateTo);
+                ->whereDate('m.data_hora', '<=', $dateTo)
+                ->where(function ($q) use ($setoresPermitidos) {
+                    $q->whereIn('m.setor_origem_id', $setoresPermitidos)
+                      ->orWhereIn('m.setor_destino_id', $setoresPermitidos);
+                });
 
             // Aplicar filtros opcionais
             if (!empty($filters['unidade_id'])) {
@@ -677,6 +715,13 @@ class RelatoriosController extends Controller
             $dateFrom = $filters['date_from'] ?? date('Y-m-d');
             $dateTo = $filters['date_to'] ?? $dateFrom;
 
+            // Restringir aos setores que o usuário autenticado tem acesso
+            $user = auth()->user();
+            $setoresPermitidos = \Illuminate\Support\Facades\DB::table('usuario_setor')
+                ->where('usuario_id', $user->id)
+                ->pluck('setor_id')
+                ->toArray();
+
             // Query agregada: agrupa por data e produto, soma quantidades
             $query = DB::table('itens_entrada as ie')
                 ->join('entrada as e', 'ie.entrada_id', '=', 'e.id')
@@ -697,7 +742,8 @@ class RelatoriosController extends Controller
                     DB::raw('COUNT(DISTINCT e.fornecedor_id) as total_fornecedores')
                 )
                 ->whereDate('e.created_at', '>=', $dateFrom)
-                ->whereDate('e.created_at', '<=', $dateTo);
+                ->whereDate('e.created_at', '<=', $dateTo)
+                ->whereIn('e.setor_id', $setoresPermitidos);
 
             // Aplicar filtros opcionais
             if (!empty($filters['unidade_id'])) {
@@ -884,6 +930,14 @@ class RelatoriosController extends Controller
                 'setor:id,unidade_id,nome,tipo',
                 'setor.unidade:id,nome'
             ]);
+
+            // Restringir aos setores que o usuário autenticado tem acesso
+            $user = auth()->user();
+            $setoresPermitidos = \Illuminate\Support\Facades\DB::table('usuario_setor')
+                ->where('usuario_id', $user->id)
+                ->pluck('setor_id');
+            // Na tabela estoque, 'unidade_id' na verdade é o setor_id
+            $query->whereIn('estoque.unidade_id', $setoresPermitidos);
 
             // Aplicar filtros se fornecidos
             $filters = $data['filters'] ?? [];

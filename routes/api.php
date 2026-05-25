@@ -180,12 +180,15 @@ Route::post('/grupoProduto/delete/{id}', [GrupoProdutoController::class, 'delete
 Route::post('/estoqueLote/list', [EstoqueLoteController::class, 'list']);
 Route::post('/estoqueLote/updateQuantidade', [EstoqueLoteController::class, 'updateQuantidade']);
 
-// Rotas para relatórios
-Route::post('/relatorios/entradas/list', [RelatoriosController::class, 'listEntradasReport']);
-Route::post('/relatorios/movimentacoes/list', [RelatoriosController::class, 'listMovimentacoesReport']);
-Route::post('/relatorios/saidas/list', [RelatoriosController::class, 'listSaidasReport']);
-Route::post('/relatorios/saidas-por-data/list', [RelatoriosController::class, 'listSaidasPorData']);
-Route::post('/relatorios/entradas-por-data/list', [RelatoriosController::class, 'listEntradasPorData']);
-Route::post('/relatorios/estoque/list', [RelatoriosController::class, 'listEstoqueReport']);
-Route::post('/relatorios/usuarios/list', [RelatoriosController::class, 'listUsuariosReport']);
+// Rotas para relatórios — exige autenticação via Sanctum
+// (controle de perfil é feito no próprio controller via usuario_setor)
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/relatorios/entradas/list', [RelatoriosController::class, 'listEntradasReport']);
+    Route::post('/relatorios/movimentacoes/list', [RelatoriosController::class, 'listMovimentacoesReport']);
+    Route::post('/relatorios/saidas/list', [RelatoriosController::class, 'listSaidasReport']);
+    Route::post('/relatorios/saidas-por-data/list', [RelatoriosController::class, 'listSaidasPorData']);
+    Route::post('/relatorios/entradas-por-data/list', [RelatoriosController::class, 'listEntradasPorData']);
+    Route::post('/relatorios/estoque/list', [RelatoriosController::class, 'listEstoqueReport']);
+    Route::post('/relatorios/usuarios/list', [RelatoriosController::class, 'listUsuariosReport']);
+});
 
