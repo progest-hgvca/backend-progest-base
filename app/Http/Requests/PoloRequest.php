@@ -11,7 +11,7 @@ class PoloRequest extends BaseFormRequest
         $id = $this->input('id');
 
         return [
-            'id' => $id ? 'required|integer|exists:polos,id' : 'nullable',
+            'id' => 'nullable|integer',
             'nome' => 'required|string|min:3|max:191|unique:polos,nome,' . $id,
             'status' => 'required|in:A,I'
         ];
@@ -20,11 +20,11 @@ class PoloRequest extends BaseFormRequest
     public function messages()
     {
         return [
-            'nome.required' => 'O nome da Unidade/Polo é obrigatório.',
-            'status.required' => 'O status da Unidade/Polo é obrigatório.',
+            'nome.required' => 'O nome do Polo é obrigatório.',
+            'status.required' => 'O status do Polo é obrigatório.',
             'nome.min' => 'O nome deve ter no mínimo 3 caracteres.',
             'nome.max' => 'O nome deve ter no máximo 191 caracteres.',
-            'nome.unique' => 'Esta Unidade/Polo já está cadastrada.',
+            'nome.unique' => 'Este Polo já está cadastrado.',
             'status.in' => 'O status deve ser A (Ativo) ou I (Inativo).'
         ];
     }
