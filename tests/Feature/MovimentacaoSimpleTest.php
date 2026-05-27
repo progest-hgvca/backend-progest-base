@@ -44,7 +44,7 @@ class MovimentacaoSimpleTest extends TestCase
             'tipo' => 'Medicamento',
             'estoque' => true,
             'status' => 'A',
-            'unidade_id' => $unidade->id
+            'polo_id' => $unidade->id
         ]);
 
         $setorDestino = Setores::create([
@@ -52,7 +52,7 @@ class MovimentacaoSimpleTest extends TestCase
             'tipo' => 'Medicamento',
             'estoque' => true,
             'status' => 'A',
-            'unidade_id' => $unidade->id
+            'polo_id' => $unidade->id
         ]);
 
         $produto = Produto::create([
@@ -66,12 +66,12 @@ class MovimentacaoSimpleTest extends TestCase
 
         // 2. DELETAR estoque auto-criado pelos observers e criar com quantidade 100
         \DB::table('estoque')->where('produto_id', $produto->id)
-            ->where('unidade_id', $setorOrigem->id)
+            ->where('setor_id', $setorOrigem->id)
             ->delete();
         
         \DB::table('estoque')->insert([
             'produto_id' => $produto->id,
-            'unidade_id' => $setorOrigem->id,
+            'setor_id' => $setorOrigem->id,
             'quantidade_atual' => 100,
             'quantidade_minima' => 10,
             'status_disponibilidade' => 'D',
@@ -81,7 +81,7 @@ class MovimentacaoSimpleTest extends TestCase
 
         // Buscar o estoque criado
         $estoqueOrigem = Estoque::where('produto_id', $produto->id)
-            ->where('unidade_id', $setorOrigem->id)
+            ->where('setor_id', $setorOrigem->id)
             ->first();
         
         // Verificar que foi criado com 100
@@ -121,7 +121,7 @@ class MovimentacaoSimpleTest extends TestCase
             // Verificar estoque diretamente no banco antes da aprovação
             $estoqueAntes = \DB::table('estoque')
                 ->where('produto_id', $produto->id)
-                ->where('unidade_id', $setorOrigem->id)
+                ->where('setor_id', $setorOrigem->id)
                 ->first();
             
             $this->fail("Falhou na aprovação. Erro: " . json_encode($response->json()) . "\n\nEstoque no banco: " . json_encode($estoqueAntes));
@@ -137,7 +137,7 @@ class MovimentacaoSimpleTest extends TestCase
 
         // 6. VERIFICAR ESTOQUE DESTINO (deve ter sido criado e incrementado)
         $estoqueDestino = Estoque::where('produto_id', $produto->id)
-            ->where('unidade_id', $setorDestino->id)
+            ->where('setor_id', $setorDestino->id)
             ->first();
         
         $this->assertNotNull($estoqueDestino, 

@@ -14,10 +14,18 @@ use App\Models\GrupoProduto;
 use App\Models\UnidadeMedida;
 use App\Models\Unidade;
 use App\Models\User;
+use Laravel\Sanctum\Sanctum;
 
 class RelatoriosTest extends TestCase
 {
     // NOTA: RefreshDatabase removido - testes rodam no banco real
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $user = User::factory()->create();
+        Sanctum::actingAs($user);
+    }
 
     public function test_endpoint_entradas_existe_e_retorna_json()
     {
