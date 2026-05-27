@@ -12,7 +12,7 @@ class EstoqueLote extends Model
     protected $table = 'estoque_lote';
 
     protected $fillable = [
-        'unidade_id',
+        'setor_id',
         'produto_id',
         'lote',
         'quantidade_disponivel',
@@ -31,7 +31,7 @@ class EstoqueLote extends Model
      */
     public function setor()
     {
-        return $this->belongsTo(Setores::class, 'unidade_id');
+        return $this->belongsTo(Setores::class, 'setor_id');
     }
 
     /**
@@ -47,7 +47,7 @@ class EstoqueLote extends Model
      */
     public function scopePorSetor($query, $setorId)
     {
-        return $query->where('unidade_id', $setorId);
+        return $query->where('setor_id', $setorId);
     }
 
     /**

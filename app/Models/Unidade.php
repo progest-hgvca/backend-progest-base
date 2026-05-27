@@ -5,11 +5,15 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @deprecated Usar o Model \App\Models\Polo.
+ *             A tabela 'unidades' foi renomeada para 'polos' (migration 2026_05_25).
+ */
 class Unidade extends Model
 {
     use HasFactory;
 
-    protected $table = 'unidades';
+    protected $table = 'polos';
 
     protected $fillable = [
         'nome',
@@ -24,7 +28,7 @@ class Unidade extends Model
     // Relacionamentos
     public function setores()
     {
-        return $this->hasMany(Setores::class, 'unidade_id');
+        return $this->hasMany(Setores::class, 'polo_id');
     }
 
     // Scopes para filtros

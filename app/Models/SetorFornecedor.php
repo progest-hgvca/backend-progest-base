@@ -5,15 +5,20 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @deprecated Usar o Model \App\Models\SetorDistribuidor.
+ *             A tabela 'setor_fornecedor' foi renomeada para 'setor_distribuidor' (migration 2026_05_25).
+ *             A coluna 'setor_fornecedor_id' foi renomeada para 'setor_distribuidor_id'.
+ */
 class SetorFornecedor extends Model
 {
     use HasFactory;
 
-    protected $table = 'setor_fornecedor';
+    protected $table = 'setor_distribuidor';
 
     protected $fillable = [
         'setor_solicitante_id',
-        'setor_fornecedor_id'
+        'setor_distribuidor_id'
     ];
 
     public function solicitante()
@@ -23,6 +28,6 @@ class SetorFornecedor extends Model
 
     public function fornecedor()
     {
-        return $this->belongsTo(Setores::class, 'setor_fornecedor_id');
+        return $this->belongsTo(Setores::class, 'setor_distribuidor_id');
     }
 }

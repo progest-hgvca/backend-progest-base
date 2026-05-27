@@ -13,7 +13,7 @@ class EstoqueAuditoria extends Model
     protected $fillable = [
         'estoque_id',
         'produto_id',
-        'unidade_id',
+        'setor_id',
         'quantidade_anterior',
         'quantidade_nova',
         'diferenca',
@@ -41,7 +41,7 @@ class EstoqueAuditoria extends Model
 
     public function setor()
     {
-        return $this->belongsTo(Setores::class, 'unidade_id');
+        return $this->belongsTo(Setores::class, 'setor_id');
     }
 
     // Scopes
@@ -52,7 +52,7 @@ class EstoqueAuditoria extends Model
 
     public function scopePorSetor($query, $setorId)
     {
-        return $query->where('unidade_id', $setorId);
+        return $query->where('setor_id', $setorId);
     }
 
     public function scopePorPeriodo($query, $dataInicio, $dataFim)
