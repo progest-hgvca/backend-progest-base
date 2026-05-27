@@ -13,7 +13,7 @@ class Estoque extends Model
 
     protected $fillable = [
         'produto_id',
-        'unidade_id',
+        'setor_id',
         'quantidade_atual',
         'quantidade_minima',
         'localizacao',
@@ -35,12 +35,12 @@ class Estoque extends Model
 
     public function setor()
     {
-        return $this->belongsTo(Setores::class, 'unidade_id');
+        return $this->belongsTo(Setores::class, 'setor_id');
     }
 
     public function lotes()
     {
-        return $this->hasMany(EstoqueLote::class, 'unidade_id', 'unidade_id')
+        return $this->hasMany(EstoqueLote::class, 'setor_id', 'setor_id')
             ->where('produto_id', $this->produto_id);
     }
 
@@ -57,7 +57,7 @@ class Estoque extends Model
 
     public function scopePorSetor($query, $setorId)
     {
-        return $query->where('unidade_id', $setorId);
+        return $query->where('setor_id', $setorId);
     }
 
     // Métodos auxiliares
@@ -72,7 +72,7 @@ class Estoque extends Model
     }
 
     /**
-     * Método estático para criar estoque inicial para todos os produtos de um tipo em um setor
+     * Cria estoque inicial para todos os produtos compatíveis com um setor.
      */
     public static function criarEstoqueInicialParaSetor($setorId)
     {
@@ -82,31 +82,29 @@ class Estoque extends Model
             return;
         }
 
-        // Buscar todos os produtos do tipo compatível com o setor
         $produtos = Produto::whereHas('grupoProduto', function ($query) use ($setor) {
             $query->where('tipo', $setor->tipo)->where('status', 'A');
         })->where('status', 'A')->get();
 
         foreach ($produtos as $produto) {
-            // Verificar se já existe estoque para este produto neste setor
             $estoqueExistente = self::where('produto_id', $produto->id)
-                ->where('unidade_id', $setorId)
+                ->where('setor_id', $setorId)
                 ->first();
 
             if (!$estoqueExistente) {
                 self::create([
-                    'produto_id' => $produto->id,
-                    'unidade_id' => $setorId,
-                    'quantidade_atual' => 0,
-                    'quantidade_minima' => 0,
-                    'status_disponibilidade' => 'D'
+                    'produto_id'             => $produto->id,
+                    'setor_id'               => $setorId,
+                    'quantidade_atual'        => 0,
+                    'quantidade_minima'       => 0,
+                    'status_disponibilidade' => 'D',
                 ]);
             }
         }
     }
 
     /**
-     * Método estático para criar estoque em todas os setores compatíveis quando um produto é criado
+     * Cria estoque em todos os setores compatíveis quando um produto é criado.
      */
     public static function criarEstoqueParaNovoProduto($produtoId)
     {
@@ -116,25 +114,23 @@ class Estoque extends Model
             return;
         }
 
-        // Buscar todas os setores que têm estoque e são do tipo compatível
         $setores = Setores::where('estoque', true)
             ->where('tipo', $produto->grupoProduto->tipo)
             ->where('status', 'A')
             ->get();
 
         foreach ($setores as $setor) {
-            // Verificar se já existe estoque para este produto neste setor
             $estoqueExistente = self::where('produto_id', $produtoId)
-                ->where('unidade_id', $setor->id)
+                ->where('setor_id', $setor->id)
                 ->first();
 
             if (!$estoqueExistente) {
                 self::create([
-                    'produto_id' => $produtoId,
-                    'unidade_id' => $setor->id,
-                    'quantidade_atual' => 0,
-                    'quantidade_minima' => 0,
-                    'status_disponibilidade' => 'D'
+                    'produto_id'             => $produtoId,
+                    'setor_id'               => $setor->id,
+                    'quantidade_atual'        => 0,
+                    'quantidade_minima'       => 0,
+                    'status_disponibilidade' => 'D',
                 ]);
             }
         }

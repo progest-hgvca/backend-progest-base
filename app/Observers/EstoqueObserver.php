@@ -21,13 +21,13 @@ class EstoqueObserver
             Log::error("Tentativa de salvar estoque com quantidade negativa", [
                 'estoque_id' => $estoque->id,
                 'produto_id' => $estoque->produto_id,
-                'unidade_id' => $estoque->unidade_id,
+                'setor_id' => $estoque->setor_id,
                 'quantidade_atual' => $estoque->quantidade_atual,
             ]);
             
             throw new \RuntimeException(
                 "Quantidade de estoque não pode ser negativa. " .
-                "Produto: {$estoque->produto_id}, Setor: {$estoque->unidade_id}, Quantidade: {$estoque->quantidade_atual}"
+                "Produto: {$estoque->produto_id}, Setor: {$estoque->setor_id}, Quantidade: {$estoque->quantidade_atual}"
             );
         }
 
@@ -46,7 +46,7 @@ class EstoqueObserver
             Log::info("Alteração de estoque detectada", [
                 'estoque_id' => $estoque->id,
                 'produto_id' => $estoque->produto_id,
-                'unidade_id' => $estoque->unidade_id,
+                'setor_id' => $estoque->setor_id,
                 'quantidade_anterior' => $original,
                 'quantidade_nova' => $estoque->quantidade_atual,
                 'diferenca' => $diferenca,
@@ -65,7 +65,7 @@ class EstoqueObserver
         Log::info("Novo estoque criado", [
             'estoque_id' => $estoque->id,
             'produto_id' => $estoque->produto_id,
-            'unidade_id' => $estoque->unidade_id,
+            'setor_id' => $estoque->setor_id,
             'quantidade_atual' => $estoque->quantidade_atual,
         ]);
     }

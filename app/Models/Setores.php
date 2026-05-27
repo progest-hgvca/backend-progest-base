@@ -53,7 +53,7 @@ class Setores extends Model
     /**
      * Obter grupos de produtos compatíveis com este setor
      */
-    public function gruposCompatíveis()
+    public function gruposCompativeis()
     {
         return GrupoProduto::where('tipo', $this->tipo)->where('status', 'A');
     }
@@ -63,7 +63,8 @@ class Setores extends Model
      */
     public function estoques()
     {
-        return $this->hasMany(Estoque::class, 'polo_id');
+        // FK na tabela estoque é 'setor_id' que referencia setores.id
+        return $this->hasMany(Estoque::class, 'setor_id');
     }
 
     /**
