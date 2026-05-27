@@ -149,4 +149,51 @@ class UsuarioSetorController extends Controller
             return response()->json(['status' => false, 'message' => 'Erro interno ao carregar a lista.'], 500);
         }
     }
-}
+
+    /**
+     * Listar setores vinculados a um usuário (com polo eager loading)
+     */
+    public function listByUsuario(Request $request)
+    {
+        try {
+            $usuarioId = $request->input('usuario_id');
+
+            if (!$usuarioId) {
+                return response()->json(['status' => false, 'message' => 'ID do usuário é obrigatório.'], 400);
+            }
+
+            $rows = DB::table('usuario_setor')
+                ->where('usuario_setor.usuario_id', $usuarioId)
+                ->join('setores', 'usuario_setor.setor_id', '=', 'setores.id')
+                ->leftJoin('polos', 'setores.polo_id', '=', 'polos.id')
+                ->select(
+                    'usuario_setor.setor_id',
+                    'usuario_setor.perfil',
+                    'setores.nome as setor_nome',
+                    'polos.id as polo_id',
+                    'polos.nome as polo_nome',
+                    'polos.sigla as polo_sigla'
+                )
+                ->get()
+                ->map(function ($row) {
+                    return [
+                        'setor_id' => $row->setor_id,
+                        'perfil'   => $row->perfil,
+                        'setor'    => [
+                            'nome' => $row->setor_nome,
+                            'polo' => [
+                                'id'    => $row->polo_id,
+                                'nome'  => $row->polo_nome,
+                                'sigla' => $row->polo_sigla,
+                            ],
+                        ],
+                    ];
+                });
+
+            return response()->json(['status' => true, 'data' => $rows]);
+        } catch (\Throwable $e) {
+            Log::error('Erro ao listar setores por usuario: ' . $e->getMessage());
+            return response()->json(['status' => false, 'message' => 'Erro interno ao carregar a lista.'], 500);
+        }
+    }
+}
