@@ -22,7 +22,7 @@ class SetoresFornecedoresTest extends TestCase
 
         // Criar setor fornecedor existente
         $fornecedor = Setores::create([
-            'unidade_id' => $unidade->id,
+            'polo_id' => $unidade->id,
             'nome' => 'FORNECEDOR A',
             'tipo' => 'Medicamento',
             'estoque' => false,
@@ -32,13 +32,13 @@ class SetoresFornecedoresTest extends TestCase
         // Payload para criar setor solicitante com fornecedor
         $payload = [
             'Setores' => [
-                'unidade_id' => $unidade->id,
+                'polo_id' => $unidade->id,
                 'nome' => 'SOLICITANTE X',
                 'tipo' => 'Medicamento',
                 'estoque' => false
             ],
-            'fornecedor' => [
-                'setor_fornecedor_id' => $fornecedor->id  // Campo correto
+            'distribuidor' => [
+                'setor_distribuidor_id' => $fornecedor->id
             ]
         ];
 
@@ -49,7 +49,7 @@ class SetoresFornecedoresTest extends TestCase
         $this->assertNotNull($solicitante);
 
         $rel = SetorFornecedor::where('setor_solicitante_id', $solicitante->id)
-            ->where('setor_fornecedor_id', $fornecedor->id)
+            ->where('setor_distribuidor_id', $fornecedor->id)
             ->first();
 
         $this->assertNotNull($rel);
@@ -57,13 +57,13 @@ class SetoresFornecedoresTest extends TestCase
         // Criar outro solicitante com o mesmo fornecedor (deve funcionar)
         $payload2 = [
             'Setores' => [
-                'unidade_id' => $unidade->id,
+                'polo_id' => $unidade->id,
                 'nome' => 'SOLICITANTE Y',
                 'tipo' => 'Medicamento',
                 'estoque' => false
             ],
-            'fornecedor' => [
-                'setor_fornecedor_id' => $fornecedor->id  // Campo correto
+            'distribuidor' => [
+                'setor_distribuidor_id' => $fornecedor->id
             ]
         ];
 
