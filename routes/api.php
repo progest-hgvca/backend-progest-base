@@ -164,6 +164,7 @@ Route::get('/movimentacao/{id}/preview-lotes', [MovimentacaoController::class, '
 Route::post('/movimentacao/{id}/process', [MovimentacaoController::class, 'process']);
 Route::post('/movimentacao/{id}/delete', [MovimentacaoController::class, 'destroy']);
 Route::post('/movimentacoes/{id}/status', [MovimentacaoController::class, 'updateStatus']);
+Route::post('/movimentacao/{id}/update-rascunho', [MovimentacaoController::class, 'updateRascunho']);
 
 // Rotas antigas do estoque (para manter compatibilidade)
 Route::post('/estoque/add', [CadastrosEstoqueController::class, 'add']);
