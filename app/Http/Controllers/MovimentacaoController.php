@@ -158,12 +158,6 @@ class MovimentacaoController extends Controller
         try {
             DB::beginTransaction();
 
-            if ($action === 'approve') {
-                // ... (código existente de approve) ...
-                // Para simplificar o diff, mantenho o código existente, 
-                // mas na prática vou inserir logs no início e antes do save
-            }
-
             Log::info("Processando ação: $action para Movimentacao ID: $id");
 
             if ($action === 'approve') {
@@ -172,7 +166,7 @@ class MovimentacaoController extends Controller
                 if (!empty($itens) && is_array($itens)) {
                     foreach ($itens as $itemData) {
                         if (isset($itemData['id']) && isset($itemData['quantidade_liberada'])) {
-                            $quantidadesLiberadas[$itemData['id']] = (int) $itemData['quantidade_liberada'];
+                $quantidadesLiberadas[$itemData['id']] = (float) $itemData['quantidade_liberada'];
                         }
                     }
                 }
@@ -373,6 +367,63 @@ class MovimentacaoController extends Controller
         $mov->itens()->delete();
         $mov->delete();
         return response()->json(['status' => true]);
+    }
+
+    // Atualizar rascunho (substituir itens, atualizar setor de origem e observação)
+    public function updateRascunho(Request $request, $id)
+    {
+        $mov = Movimentacao::with('itens')->find($id);
+        if (!$mov) {
+            return response()->json(['status' => false, 'message' => 'Movimentação não encontrada'], 404);
+        }
+        if ($mov->status_solicitacao !== 'C') {
+            return response()->json(['status' => false, 'message' => 'Só é possível editar movimentações em rascunho'], 403);
+        }
+
+        $data = $request->only(['setor_origem_id', 'observacao', 'itens']);
+
+        $validator = Validator::make($data, [
+            'setor_origem_id'                  => 'nullable|integer|exists:setores,id',
+            'observacao'                       => 'nullable|string',
+            'itens'                            => 'required|array|min:1',
+            'itens.*.produto_id'               => 'required|integer|exists:produtos,id',
+            'itens.*.quantidade_solicitada'    => 'required|numeric|min:0.0001',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
+        }
+
+        try {
+            DB::transaction(function () use ($mov, $data) {
+                // Atualizar campos da movimentação
+                $mov->setor_origem_id = $data['setor_origem_id'] ?? $mov->setor_origem_id;
+                $mov->observacao      = $data['observacao'] ?? $mov->observacao;
+                $mov->save();
+
+                // Substituir itens completamente
+                $mov->itens()->delete();
+                foreach ($data['itens'] as $it) {
+                    // aceitar 'produto_id' ou 'produtoId'
+                    $produtoId = $it['produto_id'] ?? ($it['produtoId'] ?? null);
+                    $qtd       = $it['quantidade_solicitada'] ?? ($it['quantidade'] ?? 0);
+                    if (!$produtoId) continue;
+
+                    ItemMovimentacao::create([
+                        'movimentacao_id'      => $mov->id,
+                        'produto_id'           => $produtoId,
+                        'quantidade_solicitada'=> $qtd,
+                        'quantidade_liberada'  => 0,
+                        'lote'                 => null,
+                    ]);
+                }
+            });
+
+            return response()->json(['status' => true, 'data' => $mov->fresh('itens.produto', 'setorOrigem', 'setorDestino')]);
+        } catch (\Exception $e) {
+            Log::error('Erro ao atualizar rascunho: ' . $e->getMessage());
+            return response()->json(['status' => false, 'message' => 'Erro ao atualizar rascunho', 'detail' => $e->getMessage()], 500);
+        }
     }
 
     /**
