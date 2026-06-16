@@ -31,6 +31,11 @@ class MovimentacaoController extends Controller
             }
         }
 
+        // Rascunho (status 'C') pode ser salvo sem itens; movimentações pendentes/
+        // aprovadas exigem ao menos um item para não gerar transferência fantasma.
+        $isRascunho = ($data['status_solicitacao'] ?? 'P') === 'C';
+        $itensRules = $isRascunho ? ['nullable', 'array'] : ['required', 'array', 'min:1'];
+
         // Tarefa 1: Pendente de mover para um MovimentacaoRequest no futuro
         $validator = Validator::make($data, [
             'usuario_id' => 'required|integer|exists:users,id',
@@ -38,7 +43,7 @@ class MovimentacaoController extends Controller
             'status_solicitacao' => 'nullable|in:A,R,P,C',
             'setor_origem_id' => 'nullable|integer|exists:setores,id',
             'setor_destino_id' => 'nullable|integer|exists:setores,id',
-            'itens' => 'nullable|array',
+            'itens' => $itensRules,
             'itens.*.produto_id' => 'required_with:itens|integer|exists:produtos,id',
             'itens.*.quantidade_solicitada' => 'required_with:itens|numeric|min:0.0001'
         ]);
