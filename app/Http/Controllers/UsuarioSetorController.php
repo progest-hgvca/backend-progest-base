@@ -186,10 +186,20 @@ class UsuarioSetorController extends Controller
     public function listarPorUsuario(Request $request)
     {
         try {
-            $usuarioId = $request->input('usuario_id');
+            /** @var User $autenticado */
+            $autenticado = Auth::user();
+            $usuarioIdSolicitado = $request->input('usuario_id');
 
-            if (!$usuarioId) {
-                return response()->json(['status' => false, 'message' => 'ID do usuário é obrigatório.'], 400);
+            // Por padrão, o usuário só pode consultar os próprios vínculos.
+            // Somente o super admin pode consultar os vínculos de outro usuário
+            // (ex.: tela de Gestão de Vínculos no módulo administrativo).
+            if (!empty($usuarioIdSolicitado) && (int) $usuarioIdSolicitado !== (int) $autenticado->id) {
+                if (!$autenticado->isSuperAdmin()) {
+                    return response()->json(['status' => false, 'message' => 'Ação não permitida.'], 403);
+                }
+                $usuarioId = $usuarioIdSolicitado;
+            } else {
+                $usuarioId = $autenticado->id;
             }
 
             $registros = DB::table('usuario_setor')

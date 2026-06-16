@@ -570,17 +570,17 @@ class SetoresController
     {
         $referencias = [];
 
-        $estoqueCount = DB::table('estoque')->where('polo_id', $id)->count();
+        $estoqueCount = DB::table('estoque')->where('setor_id', $id)->count();
         if ($estoqueCount > 0) {
             $referencias[] = 'estoque (' . $estoqueCount . ' itens)';
         }
 
-        $movOrigemCount = DB::table('movimentacao')->where('polo_origem_id', $id)->count();
+        $movOrigemCount = DB::table('movimentacao')->where('setor_origem_id', $id)->count();
         if ($movOrigemCount > 0) {
             $referencias[] = 'movimentações de origem (' . $movOrigemCount . ')';
         }
 
-        $movDestinoCount = DB::table('movimentacao')->where('polo_destino_id', $id)->count();
+        $movDestinoCount = DB::table('movimentacao')->where('setor_destino_id', $id)->count();
         if ($movDestinoCount > 0) {
             $referencias[] = 'movimentações de destino (' . $movDestinoCount . ')';
         }

@@ -59,12 +59,15 @@ class RelatoriosController extends Controller
                 'itens.produto.grupoProduto:id,nome,tipo'
             ]);
 
-            // Restringir aos setores que o usuário autenticado tem acesso
+            // Restringir aos setores que o usuário autenticado tem acesso.
+            // Super admin enxerga todos os setores (sem restrição).
             $user = auth()->user();
-            $setoresPermitidos = \Illuminate\Support\Facades\DB::table('usuario_setor')
-                ->where('usuario_id', $user->id)
-                ->pluck('setor_id');
-            $query->whereIn('setor_id', $setoresPermitidos);
+            if (!$user->isSuperAdmin()) {
+                $setoresPermitidos = \Illuminate\Support\Facades\DB::table('usuario_setor')
+                    ->where('usuario_id', $user->id)
+                    ->pluck('setor_id');
+                $query->whereIn('setor_id', $setoresPermitidos);
+            }
 
             // Aplicar filtros se fornecidos
             $filters = $data['filters'] ?? [];
@@ -176,15 +179,18 @@ class RelatoriosController extends Controller
                 'itens.produto.grupoProduto:id,nome,tipo'
             ]);
 
-            // Restringir aos setores que o usuário autenticado tem acesso
+            // Restringir aos setores que o usuário autenticado tem acesso.
+            // Super admin enxerga todos os setores (sem restrição).
             $user = auth()->user();
-            $setoresPermitidos = \Illuminate\Support\Facades\DB::table('usuario_setor')
-                ->where('usuario_id', $user->id)
-                ->pluck('setor_id');
-            $query->where(function ($q) use ($setoresPermitidos) {
-                $q->whereIn('setor_origem_id', $setoresPermitidos)
-                  ->orWhereIn('setor_destino_id', $setoresPermitidos);
-            });
+            if (!$user->isSuperAdmin()) {
+                $setoresPermitidos = \Illuminate\Support\Facades\DB::table('usuario_setor')
+                    ->where('usuario_id', $user->id)
+                    ->pluck('setor_id');
+                $query->where(function ($q) use ($setoresPermitidos) {
+                    $q->whereIn('setor_origem_id', $setoresPermitidos)
+                      ->orWhereIn('setor_destino_id', $setoresPermitidos);
+                });
+            }
 
             // Aplicar filtros se fornecidos
             $filters = $data['filters'] ?? [];
@@ -335,15 +341,18 @@ class RelatoriosController extends Controller
                 'itens.produto.grupoProduto:id,nome,tipo'
             ])->where('tipo', 'S');
 
-            // Restringir aos setores que o usuário autenticado tem acesso
+            // Restringir aos setores que o usuário autenticado tem acesso.
+            // Super admin enxerga todos os setores (sem restrição).
             $user = auth()->user();
-            $setoresPermitidos = \Illuminate\Support\Facades\DB::table('usuario_setor')
-                ->where('usuario_id', $user->id)
-                ->pluck('setor_id');
-            $query->where(function ($q) use ($setoresPermitidos) {
-                $q->whereIn('setor_origem_id', $setoresPermitidos)
-                  ->orWhereIn('setor_destino_id', $setoresPermitidos);
-            });
+            if (!$user->isSuperAdmin()) {
+                $setoresPermitidos = \Illuminate\Support\Facades\DB::table('usuario_setor')
+                    ->where('usuario_id', $user->id)
+                    ->pluck('setor_id');
+                $query->where(function ($q) use ($setoresPermitidos) {
+                    $q->whereIn('setor_origem_id', $setoresPermitidos)
+                      ->orWhereIn('setor_destino_id', $setoresPermitidos);
+                });
+            }
 
             // Aplicar filtros se fornecidos
             $filters = $data['filters'] ?? [];
@@ -487,8 +496,10 @@ class RelatoriosController extends Controller
             $dateFrom = $filters['date_from'] ?? date('Y-m-d');
             $dateTo = $filters['date_to'] ?? $dateFrom;
 
-            // Restringir aos setores que o usuário autenticado tem acesso
+            // Restringir aos setores que o usuário autenticado tem acesso.
+            // Super admin enxerga todos os setores (sem restrição).
             $user = auth()->user();
+            $isSuperAdmin = $user->isSuperAdmin();
             $setoresPermitidos = \Illuminate\Support\Facades\DB::table('usuario_setor')
                 ->where('usuario_id', $user->id)
                 ->pluck('setor_id')
@@ -516,11 +527,14 @@ class RelatoriosController extends Controller
                 ->where('m.tipo', 'S') // Apenas saídas
                 ->where('m.status_solicitacao', 'A') // Apenas aprovadas
                 ->whereDate('m.data_hora', '>=', $dateFrom)
-                ->whereDate('m.data_hora', '<=', $dateTo)
-                ->where(function ($q) use ($setoresPermitidos) {
+                ->whereDate('m.data_hora', '<=', $dateTo);
+
+            if (!$isSuperAdmin) {
+                $query->where(function ($q) use ($setoresPermitidos) {
                     $q->whereIn('m.setor_origem_id', $setoresPermitidos)
                       ->orWhereIn('m.setor_destino_id', $setoresPermitidos);
                 });
+            }
 
             // Aplicar filtros opcionais
             if (!empty($filters['polo_id'])) {
@@ -583,7 +597,7 @@ class RelatoriosController extends Controller
                 }
                 
                 // Buscar movimentações detalhadas (origem e destino) deste produto nesta data
-                $movimentacoesDetalhadas = DB::table('item_movimentacao as im')
+                $detalhadasQuery = DB::table('item_movimentacao as im')
                     ->join('movimentacao as m', 'im.movimentacao_id', '=', 'm.id')
                     ->join('setores as so', 'm.setor_origem_id', '=', 'so.id')
                     ->leftJoin('setores as sd', 'm.setor_destino_id', '=', 'sd.id')
@@ -600,7 +614,18 @@ class RelatoriosController extends Controller
                     ->where('im.produto_id', $item->produto_id)
                     ->whereDate('m.data_hora', $data)
                     ->where('m.tipo', 'S')
-                    ->where('m.status_solicitacao', 'A')
+                    ->where('m.status_solicitacao', 'A');
+
+                // Reaplicar o escopo de setores permitidos também no detalhe,
+                // para não vazar movimentações de setores sem acesso.
+                if (!$isSuperAdmin) {
+                    $detalhadasQuery->where(function ($q) use ($setoresPermitidos) {
+                        $q->whereIn('m.setor_origem_id', $setoresPermitidos)
+                          ->orWhereIn('m.setor_destino_id', $setoresPermitidos);
+                    });
+                }
+
+                $movimentacoesDetalhadas = $detalhadasQuery
                     ->orderBy('m.data_hora', 'desc')
                     ->get();
                 
@@ -715,8 +740,10 @@ class RelatoriosController extends Controller
             $dateFrom = $filters['date_from'] ?? date('Y-m-d');
             $dateTo = $filters['date_to'] ?? $dateFrom;
 
-            // Restringir aos setores que o usuário autenticado tem acesso
+            // Restringir aos setores que o usuário autenticado tem acesso.
+            // Super admin enxerga todos os setores (sem restrição).
             $user = auth()->user();
+            $isSuperAdmin = $user->isSuperAdmin();
             $setoresPermitidos = \Illuminate\Support\Facades\DB::table('usuario_setor')
                 ->where('usuario_id', $user->id)
                 ->pluck('setor_id')
@@ -742,8 +769,11 @@ class RelatoriosController extends Controller
                     DB::raw('COUNT(DISTINCT e.fornecedor_id) as total_fornecedores')
                 )
                 ->whereDate('e.created_at', '>=', $dateFrom)
-                ->whereDate('e.created_at', '<=', $dateTo)
-                ->whereIn('e.setor_id', $setoresPermitidos);
+                ->whereDate('e.created_at', '<=', $dateTo);
+
+            if (!$isSuperAdmin) {
+                $query->whereIn('e.setor_id', $setoresPermitidos);
+            }
 
             // Aplicar filtros opcionais
             if (!empty($filters['polo_id'])) {
@@ -800,7 +830,7 @@ class RelatoriosController extends Controller
                 }
                 
                 // Buscar entradas detalhadas (fornecedor, nota fiscal, setor) deste produto nesta data
-                $entradasDetalhadas = DB::table('itens_entrada as ie')
+                $entradasDetalhadasQuery = DB::table('itens_entrada as ie')
                     ->join('entrada as e', 'ie.entrada_id', '=', 'e.id')
                     ->join('fornecedores as f', 'e.fornecedor_id', '=', 'f.id')
                     ->join('setores as s', 'e.setor_id', '=', 's.id')
@@ -819,7 +849,14 @@ class RelatoriosController extends Controller
                         'e.created_at'
                     )
                     ->where('ie.produto_id', $item->produto_id)
-                    ->whereDate('e.created_at', $data)
+                    ->whereDate('e.created_at', $data);
+
+                // Reaplicar o escopo de setores permitidos também no detalhe.
+                if (!$isSuperAdmin) {
+                    $entradasDetalhadasQuery->whereIn('e.setor_id', $setoresPermitidos);
+                }
+
+                $entradasDetalhadas = $entradasDetalhadasQuery
                     ->orderBy('e.created_at', 'desc')
                     ->get();
                 
@@ -931,13 +968,16 @@ class RelatoriosController extends Controller
                 'setor.polo:id,nome'
             ]);
 
-            // Restringir aos setores que o usuário autenticado tem acesso
+            // Restringir aos setores que o usuário autenticado tem acesso.
+            // Super admin enxerga todos os setores (sem restrição).
             $user = auth()->user();
-            $setoresPermitidos = \Illuminate\Support\Facades\DB::table('usuario_setor')
-                ->where('usuario_id', $user->id)
-                ->pluck('setor_id');
-            // Na tabela estoque, 'setor_id' referencia setores.id
-            $query->whereIn('estoque.setor_id', $setoresPermitidos);
+            if (!$user->isSuperAdmin()) {
+                $setoresPermitidos = \Illuminate\Support\Facades\DB::table('usuario_setor')
+                    ->where('usuario_id', $user->id)
+                    ->pluck('setor_id');
+                // Na tabela estoque, 'setor_id' referencia setores.id
+                $query->whereIn('estoque.setor_id', $setoresPermitidos);
+            }
 
             // Aplicar filtros se fornecidos
             $filters = $data['filters'] ?? [];

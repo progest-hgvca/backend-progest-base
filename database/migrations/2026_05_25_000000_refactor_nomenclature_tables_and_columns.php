@@ -46,7 +46,20 @@ class RefactorNomenclatureTablesAndColumns extends Migration
             DB::unprepared('DROP TRIGGER IF EXISTS after_update_estoque');
             DB::unprepared('DROP TRIGGER IF EXISTS after_insert_estoque');
 
+            // A coluna possui FK (estoque_unidade_id_foreign) criada via constrained();
+            // é obrigatório removê-la antes do ALTER ... CHANGE, senão o MySQL recusa.
+            Schema::table('estoque', function (Blueprint $table) {
+                if ($this->hasForeignKey('estoque', 'estoque_unidade_id_foreign')) {
+                    $table->dropForeign('estoque_unidade_id_foreign');
+                }
+            });
+
             DB::statement('ALTER TABLE estoque CHANGE unidade_id setor_id BIGINT UNSIGNED NOT NULL');
+
+            // Recriar a FK já com o novo nome de coluna
+            Schema::table('estoque', function (Blueprint $table) {
+                $table->foreign('setor_id')->references('id')->on('setores')->onDelete('restrict');
+            });
 
             // Recriar triggers com o novo nome de coluna
             DB::unprepared('
@@ -105,8 +118,13 @@ class RefactorNomenclatureTablesAndColumns extends Migration
         // 3c. estoque_auditoria (se a coluna ainda não foi renomeada pelo trigger step acima)
         if (Schema::hasTable('estoque_auditoria') && Schema::hasColumn('estoque_auditoria', 'unidade_id')) {
             DB::statement('ALTER TABLE estoque_auditoria CHANGE unidade_id setor_id BIGINT UNSIGNED NOT NULL');
-            DB::statement('ALTER TABLE estoque_auditoria DROP INDEX IF EXISTS idx_unidade_id');
-            DB::statement('CREATE INDEX idx_setor_id ON estoque_auditoria (setor_id)');
+            // 'DROP INDEX IF EXISTS' só existe a partir do MySQL 8.0.2; checar manualmente.
+            if ($this->hasIndex('estoque_auditoria', 'idx_unidade_id')) {
+                DB::statement('ALTER TABLE estoque_auditoria DROP INDEX idx_unidade_id');
+            }
+            if (!$this->hasIndex('estoque_auditoria', 'idx_setor_id')) {
+                DB::statement('CREATE INDEX idx_setor_id ON estoque_auditoria (setor_id)');
+            }
         }
 
         // 4. Rename 'setor_fornecedor' to 'setor_distribuidor'
@@ -174,8 +192,13 @@ class RefactorNomenclatureTablesAndColumns extends Migration
         // 3. Reverter renomeação de setor_id → unidade_id
         if (Schema::hasTable('estoque_auditoria') && Schema::hasColumn('estoque_auditoria', 'setor_id')) {
             DB::statement('ALTER TABLE estoque_auditoria CHANGE setor_id unidade_id BIGINT UNSIGNED NOT NULL');
-            DB::statement('ALTER TABLE estoque_auditoria DROP INDEX IF EXISTS idx_setor_id');
-            DB::statement('CREATE INDEX idx_unidade_id ON estoque_auditoria (unidade_id)');
+            // 'DROP INDEX IF EXISTS' só existe a partir do MySQL 8.0.2; checar manualmente.
+            if ($this->hasIndex('estoque_auditoria', 'idx_setor_id')) {
+                DB::statement('ALTER TABLE estoque_auditoria DROP INDEX idx_setor_id');
+            }
+            if (!$this->hasIndex('estoque_auditoria', 'idx_unidade_id')) {
+                DB::statement('CREATE INDEX idx_unidade_id ON estoque_auditoria (unidade_id)');
+            }
         }
 
         if (Schema::hasTable('estoque_lote') && Schema::hasColumn('estoque_lote', 'setor_id')) {
@@ -194,7 +217,17 @@ class RefactorNomenclatureTablesAndColumns extends Migration
             DB::unprepared('DROP TRIGGER IF EXISTS after_update_estoque');
             DB::unprepared('DROP TRIGGER IF EXISTS after_insert_estoque');
 
+            Schema::table('estoque', function (Blueprint $table) {
+                if ($this->hasForeignKey('estoque', 'estoque_setor_id_foreign')) {
+                    $table->dropForeign('estoque_setor_id_foreign');
+                }
+            });
+
             DB::statement('ALTER TABLE estoque CHANGE setor_id unidade_id BIGINT UNSIGNED NOT NULL');
+
+            Schema::table('estoque', function (Blueprint $table) {
+                $table->foreign('unidade_id')->references('id')->on('setores')->onDelete('restrict');
+            });
 
             DB::unprepared('
                 CREATE TRIGGER after_update_estoque
@@ -248,12 +281,25 @@ class RefactorNomenclatureTablesAndColumns extends Migration
     {
         $conn = DB::connection();
         $keys = $conn->select(DB::raw("
-            SELECT CONSTRAINT_NAME 
-            FROM information_schema.key_column_usage 
-            WHERE table_schema = DATABASE() 
-              AND table_name = '$table' 
+            SELECT CONSTRAINT_NAME
+            FROM information_schema.key_column_usage
+            WHERE table_schema = DATABASE()
+              AND table_name = '$table'
               AND constraint_name = '$key'
         "));
         return count($keys) > 0;
+    }
+
+    private function hasIndex($table, $index)
+    {
+        $conn = DB::connection();
+        $rows = $conn->select(DB::raw("
+            SELECT INDEX_NAME
+            FROM information_schema.statistics
+            WHERE table_schema = DATABASE()
+              AND table_name = '$table'
+              AND index_name = '$index'
+        "));
+        return count($rows) > 0;
     }
 }

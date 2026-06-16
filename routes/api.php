@@ -64,7 +64,7 @@ Route::post("login", [AuthController::class, 'login']);
 Route::post("register", [AuthController::class, 'register']);
 Route::post("logout", [AuthController::class, 'logout']);
 
-Route::prefix('user')->group(function () {
+Route::prefix('user')->middleware('auth:sanctum')->group(function () {
     Route::post('/add', [UserController::class, 'add']);
     Route::post('/update', [UserController::class, 'update']);
     Route::post('/list', [UserController::class, 'listAll']);
