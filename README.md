@@ -45,6 +45,10 @@ O Laravel e seus pacotes de Excel exigem extensões que vêm desativadas por pad
    ```bash
    php artisan db:seed
    ```
+   ou para recomeçar o banco de dados do zero e popular com os dados iniciais:
+   ```bash
+   php artisan migrate:fresh --seed
+   ```
 8. **Inicie o servidor:**
    ```bash
    php artisan serve
