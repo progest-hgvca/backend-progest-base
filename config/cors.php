@@ -20,7 +20,12 @@ return [
         'http://app.localhost',
     ])),
 
-    'allowed_origins_patterns' => [],
+    // Libera qualquer subdominio do Railway (*.up.railway.app), assim o
+    // frontend em producao funciona mesmo sem depender do valor exato de
+    // FRONTEND_URL. Sao expressoes regulares (preg_match).
+    'allowed_origins_patterns' => [
+        '#^https://[a-z0-9-]+\.up\.railway\.app$#',
+    ],
     'allowed_headers' => ['*'],
     'exposed_headers' => [],
     'max_age' => 0,
