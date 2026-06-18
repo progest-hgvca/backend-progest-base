@@ -152,6 +152,7 @@ Route::post('/entrada/list', [EntradaController::class, 'list']);
 Route::post('/entrada/update', [EntradaController::class, 'update']);
 Route::post('/entrada/delete', [EntradaController::class, 'delete']);
 
+
 // Rotas para movimentações
 use App\Http\Controllers\MovimentacaoController;
 
