@@ -10,9 +10,14 @@ class TrustProxies extends Middleware
     /**
      * The trusted proxies for this application.
      *
+     * Em producao (Railway/Render) a app roda atras de um proxy reverso.
+     * Confiar no proxy faz o Laravel respeitar o X-Forwarded-Proto e
+     * reconhecer as requisicoes como HTTPS, evitando redirects http->https
+     * que transformam POST em GET (erro 405).
+     *
      * @var array<int, string>|string|null
      */
-    protected $proxies;
+    protected $proxies = '*';
 
     /**
      * The headers that should be used to detect proxies.
