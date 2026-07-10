@@ -138,3 +138,4 @@ Assim que você tiver o seu domínio oficial (ex: `sistema-hospital.com.br`), si
     > ⚠️ **Aviso Importante:** Repare que o comando de Produção acima **NÃO USA** a flag `-f docker-compose.local.yml`. Ao omitir o arquivo, o Docker lerá os `docker-compose.yml` originais das pastas, que ativam todo o sistema Let's Encrypt de segurança de produção.
     O Traefik cuidará do cadeado, e magicamente o banco de dados e as rotas serão ativadas no seu domínio.
     *(A API ficará automaticamente roteada na camada oculta de segurança no diretório `/api` sob o mesmo domínio do sistema)*
+    > 
