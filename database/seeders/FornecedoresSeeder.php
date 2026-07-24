@@ -15,8 +15,8 @@ class FornecedoresSeeder extends Seeder
         $fornecedores = [
             [
                 'tipo_pessoa' => 'J',
-                'razao_social_nome' => 'Distribuidora Hospitalar Bahia LTDA',
-                'cnpj' => '27654893000155',
+                'razao_social_nome' => 'Distribuidora Pharma LTDA',
+                'cnpj' => '11222333000144',
                 'status' => 'A',
             ],
             [
@@ -27,8 +27,20 @@ class FornecedoresSeeder extends Seeder
             ],
             [
                 'tipo_pessoa' => 'J',
-                'razao_social_nome' => 'CleanCare Materiais EIRELI',
-                'cnpj' => '33221144000166',
+                'razao_social_nome' => 'Brasil Hospitalar LTDA',
+                'cnpj' => '33444555000166',
+                'status' => 'A',
+            ],
+            [
+                'tipo_pessoa' => 'J',
+                'razao_social_nome' => 'Saúde Total Distribuidora',
+                'cnpj' => '44555666000177',
+                'status' => 'A',
+            ],
+            [
+                'tipo_pessoa' => 'J',
+                'razao_social_nome' => 'Equipamentos Médicos do Nordeste',
+                'cnpj' => '55666777000188',
                 'status' => 'A',
             ],
             [

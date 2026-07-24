@@ -3,12 +3,12 @@
 namespace Database\Factories;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
-use App\Models\Unidade;
+use App\Models\Polo;
 
 // Arquivo de compatibilidade: PoloFactory aponta para Unidade
 class PoloFactory extends Factory
 {
-    protected $model = Unidade::class;
+    protected $model = Polo::class;
 
     public function definition()
     {

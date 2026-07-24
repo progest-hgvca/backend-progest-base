@@ -12,6 +12,8 @@ class CreateEstoqueTriggers extends Migration
      */
     public function up()
     {
+        if (DB::getDriverName() === 'sqlite') return;
+
         // Trigger para prevenir quantidades negativas e atualizar status automaticamente
         DB::unprepared('
             CREATE TRIGGER before_update_estoque
@@ -143,6 +145,7 @@ class CreateEstoqueTriggers extends Migration
      */
     public function down()
     {
+        if (DB::getDriverName() === 'sqlite') return;
         DB::unprepared('DROP TRIGGER IF EXISTS before_update_estoque');
         DB::unprepared('DROP TRIGGER IF EXISTS before_insert_estoque');
         DB::unprepared('DROP TRIGGER IF EXISTS after_update_estoque');

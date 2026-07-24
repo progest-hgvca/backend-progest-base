@@ -12,7 +12,7 @@ use App\Models\Fornecedor;
 use App\Models\Produto;
 use App\Models\GrupoProduto;
 use App\Models\UnidadeMedida;
-use App\Models\Unidade;
+use App\Models\Polo;
 use App\Models\User;
 use Laravel\Sanctum\Sanctum;
 

@@ -1,28 +1,44 @@
 <?php
 
-use Illuminate\Database\Migrations\Migration;
-use Illuminate\Support\Facades\DB;
+namespace Database\Seeders;
 
-/**
- * Cria um setor inicial (FARMÁCIA CENTRAL) e vincula o usuário admin a ele,
- * permitindo o primeiro acesso ao sistema em um banco recém-criado.
- *
- * A partir desse setor/polo, novos setores podem ser criados pela própria
- * aplicação. A migration é idempotente (updateOrInsert), então pode rodar
- * novamente sem gerar duplicatas.
- */
-class SeedFarmaciaCentralAndAdminLink extends Migration
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Carbon\Carbon;
+
+class AdminInicialSeeder extends Seeder
 {
     /**
-     * Run the migrations.
+     * Cria um setor inicial (FARMÁCIA CENTRAL) e vincula o usuário admin a ele,
+     * permitindo o primeiro acesso ao sistema em um banco recém-criado.
+     *
+     * A partir desse setor/polo, novos setores podem ser criados pela própria
+     * aplicação.
      *
      * @return void
      */
-    public function up()
+    public function run()
     {
-        $now = now();
+        $now = Carbon::now();
 
-        // 1. Garante um polo padrão (a tabela 'unidades' foi renomeada para 'polos').
+        // 1. Criar Usuário Admin
+        DB::table('users')->updateOrInsert(
+            ['email' => 'admin@admin.com'],
+            [
+                'name'            => 'ADMIN',
+                'password'        => Hash::make('admin'), // senha é 'admin'
+                'cpf'             => '00000000000',
+                'telefone'        => '00000000000',
+                'data_nascimento' => '1990-01-01',
+                'status'          => 'A',
+                'tipo_vinculo'    => 1,
+                'created_at'      => $now,
+                'updated_at'      => $now,
+            ]
+        );
+
+        // 2. Garante um polo padrão
         DB::table('polos')->updateOrInsert(
             ['nome' => 'Hospital Geral'],
             [
@@ -38,7 +54,7 @@ class SeedFarmaciaCentralAndAdminLink extends Migration
             return;
         }
 
-        // 2. Cria o setor FARMÁCIA CENTRAL (com estoque, tipo Medicamento).
+        // 3. Cria o setor FARMÁCIA CENTRAL (com estoque, tipo Medicamento).
         DB::table('setores')->updateOrInsert(
             ['polo_id' => $polo->id, 'nome' => 'FARMÁCIA CENTRAL'],
             [
@@ -56,7 +72,7 @@ class SeedFarmaciaCentralAndAdminLink extends Migration
             ->where('nome', 'FARMÁCIA CENTRAL')
             ->first();
 
-        // 3. Vincula o usuário admin (admin@admin.com) ao setor como 'admin'.
+        // 4. Vincula o usuário admin (admin@admin.com) ao setor como 'admin'.
         $admin = DB::table('users')->where('email', 'admin@admin.com')->first();
         if ($admin && $setor) {
             DB::table('usuario_setor')->updateOrInsert(
@@ -67,31 +83,6 @@ class SeedFarmaciaCentralAndAdminLink extends Migration
                     'updated_at' => $now,
                 ]
             );
-        }
-    }
-
-    /**
-     * Reverse the migrations.
-     *
-     * @return void
-     */
-    public function down()
-    {
-        $polo = DB::table('polos')->where('nome', 'Hospital Geral')->first();
-        if (!$polo) {
-            return;
-        }
-
-        $setor = DB::table('setores')
-            ->where('polo_id', $polo->id)
-            ->where('nome', 'FARMÁCIA CENTRAL')
-            ->first();
-
-        if ($setor) {
-            // Remove o vínculo do admin e o setor (não remove o polo nem o usuário
-            // admin para preservar outros possíveis vínculos).
-            DB::table('usuario_setor')->where('setor_id', $setor->id)->delete();
-            DB::table('setores')->where('id', $setor->id)->delete();
         }
     }
 }

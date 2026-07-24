@@ -14,7 +14,9 @@ class AlterNomeColumnInProdutosTaable extends Migration
      */
     public function up()
     {
-        DB::statement('ALTER TABLE produtos MODIFY nome TEXT');
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::statement('ALTER TABLE produtos MODIFY nome TEXT');
+        }
     }
     /**
      * Reverse the migrations.
@@ -24,6 +26,8 @@ class AlterNomeColumnInProdutosTaable extends Migration
 
     public function down()
     {
-        DB::statement('ALTER TABLE produtos MODIFY nome VARCHAR(191)');
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::statement('ALTER TABLE produtos MODIFY nome VARCHAR(191)');
+        }
     }
 }

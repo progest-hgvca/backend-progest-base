@@ -16,37 +16,51 @@ class ProdutosSeeder extends Seeder
     public function run(): void
     {
         $catalogo = [
-            'Analgésico' => [
+            'Analgésico e Antitérmico' => [
                 ['nome' => 'Paracetamol 500mg', 'marca' => 'Genérico', 'unidade' => 'Comprimido'],
-                ['nome' => 'Dipirona Sódica 1g', 'marca' => 'Farmaco', 'unidade' => 'Ampulheta'],
+                ['nome' => 'Dipirona Sódica 1g', 'marca' => 'Farmaco', 'unidade' => 'Ampola'],
+                ['nome' => 'Ibuprofeno 400mg', 'marca' => 'Genérico', 'unidade' => 'Comprimido'],
             ],
-            'Material de uso coletivo' => [
-                ['nome' => 'Soro fisiológico 0,9%', 'marca' => 'HospClean', 'unidade' => 'Ml'],
-                ['nome' => 'Kit curativo básico', 'marca' => 'HealthCare', 'unidade' => 'Pacote'],
-            ],
-            'Antibióticos' => [
+            'Antibiótico' => [
                 ['nome' => 'Amoxicilina 500mg', 'marca' => 'VidaFarma', 'unidade' => 'Comprimido'],
-                ['nome' => 'Ceftriaxona 1g', 'marca' => 'BioLab', 'unidade' => 'Ampulheta'],
+                ['nome' => 'Ceftriaxona 1g', 'marca' => 'BioLab', 'unidade' => 'Ampola'],
+                ['nome' => 'Azitromicina 500mg', 'marca' => 'Genérico', 'unidade' => 'Comprimido'],
+                ['nome' => 'Cefalexina 500mg', 'marca' => 'Genérico', 'unidade' => 'Comprimido'],
             ],
             'Vacina' => [
-                ['nome' => 'Vacina Influenza Trivalente', 'marca' => 'ImunoPlus', 'unidade' => 'Ml'],
-                ['nome' => 'Vacina Hepatite B', 'marca' => 'ImunoPlus', 'unidade' => 'Ml'],
+                ['nome' => 'Vacina Influenza Trivalente', 'marca' => 'ImunoPlus', 'unidade' => 'Frasco'],
+                ['nome' => 'Vacina Hepatite B', 'marca' => 'ImunoPlus', 'unidade' => 'Frasco'],
             ],
             'Antidepressivo' => [
                 ['nome' => 'Sertralina 50mg', 'marca' => 'PharmaLife', 'unidade' => 'Comprimido'],
                 ['nome' => 'Fluoxetina 20mg', 'marca' => 'PharmaLife', 'unidade' => 'Comprimido'],
             ],
-            'Material de escritório' => [
-                ['nome' => 'Papel A4 500 folhas', 'marca' => 'OfficeMax', 'unidade' => 'Pacote'],
-                ['nome' => 'Caneta esferográfica azul', 'marca' => 'EscritaPro', 'unidade' => 'Pacote'],
+            'Material de Curativos' => [
+                ['nome' => 'Gaze Esterilizada', 'marca' => 'HealthCare', 'unidade' => 'Pacote'],
+                ['nome' => 'Esparadrapo 5cm', 'marca' => 'HealthCare', 'unidade' => 'Rolo'],
+                ['nome' => 'Algodão 500g', 'marca' => 'HealthCare', 'unidade' => 'Pacote'],
             ],
-            'Material de limpeza' => [
-                ['nome' => 'Detergente neutro 5L', 'marca' => 'LimpaMais', 'unidade' => 'Ml'],
-                ['nome' => 'Rolo de papel toalha', 'marca' => 'LimpaMais', 'unidade' => 'Rolo'],
+            'Material Cirúrgico' => [
+                ['nome' => 'Seringa 10ml', 'marca' => 'SafeHands', 'unidade' => 'Unidade'],
+                ['nome' => 'Agulha 40x12', 'marca' => 'SafeHands', 'unidade' => 'Caixa'],
+                ['nome' => 'Cateter Venoso 22G', 'marca' => 'SafeHands', 'unidade' => 'Unidade'],
             ],
-            'Outros materiais' => [
-                ['nome' => 'Luvas descartáveis', 'marca' => 'SafeHands', 'unidade' => 'Pacote'],
-                ['nome' => 'Máscara cirúrgica tripla', 'marca' => 'SafeHands', 'unidade' => 'Pacote'],
+            'Equipamento Descartável' => [
+                ['nome' => 'Luvas de Procedimento M', 'marca' => 'SafeHands', 'unidade' => 'Caixa'],
+                ['nome' => 'Máscara Cirúrgica Tripla', 'marca' => 'SafeHands', 'unidade' => 'Caixa'],
+                ['nome' => 'Luva Cirúrgica 7.5', 'marca' => 'SafeHands', 'unidade' => 'Caixa'],
+            ],
+            'Material de Uso Coletivo' => [
+                ['nome' => 'Soro Fisiológico 0,9%', 'marca' => 'HospClean', 'unidade' => 'Mililitro'],
+                ['nome' => 'Álcool 70%', 'marca' => 'HospClean', 'unidade' => 'Frasco'],
+            ],
+            'Material de Limpeza' => [
+                ['nome' => 'Detergente Neutro 5L', 'marca' => 'LimpaMais', 'unidade' => 'Frasco'],
+                ['nome' => 'Rolo de Papel Toalha', 'marca' => 'LimpaMais', 'unidade' => 'Rolo'],
+            ],
+            'Material de Escritório' => [
+                ['nome' => 'Papel A4 500 Folhas', 'marca' => 'OfficeMax', 'unidade' => 'Pacote'],
+                ['nome' => 'Caneta Esferográfica Azul', 'marca' => 'EscritaPro', 'unidade' => 'Caixa'],
             ],
         ];
 

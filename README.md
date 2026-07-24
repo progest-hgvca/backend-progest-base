@@ -1,6 +1,5 @@
 # ⚙️ Progest - Backend API (Laravel)
 
-Teste
 
 Este é o repositório do Backend do sistema ProGest, uma API desenvolvida em Laravel.
 
@@ -43,14 +42,16 @@ O Laravel e seus pacotes de Excel exigem extensões que vêm desativadas por pad
    php artisan key:generate
    php artisan migrate
    ```
-7. **Povoar o Banco (Opcional):** Para inserir dados iniciais de teste:
-   ```bash
-   php artisan db:seed
-   ```
-   ou para recomeçar o banco de dados do zero e popular com os dados iniciais:
-   ```bash
-   php artisan migrate:fresh --seed
-   ```
+7. **Povoar o Banco (Opcional):** Você possui 2 opções de carga de dados iniciais:
+   - **Opção A (Banco Limpo):** Se for iniciar a Produção e precisa de um banco vazio (apenas com o 1º Administrador logável):
+     ```bash
+     php artisan migrate:fresh --seed
+     ```
+   - **Opção B (Banco Completo/Desenvolvimento):** Se quiser popular a base com centenas de registros fake (Polos, Produtos, Fornecedores e Estoque) para ver o painel cheio:
+     ```bash
+     php artisan migrate:fresh
+     php artisan db:seed --class=FullSystemSeeder
+     ```
 8. **Inicie o servidor:**
    ```bash
    php artisan serve
@@ -89,9 +90,14 @@ Ideal para simular o ambiente de produção com domínios reais e Proxy Reverso.
    docker compose -f docker-compose.local.yml up -d --build
    ```
 6.  **Prepare o Banco:**
+   *Opção A: Criar banco limpo para Produção (apenas o admin):*
    ```bash
-   docker compose -f docker-compose.local.yml exec progest-api php artisan migrate
-   docker compose -f docker-compose.local.yml exec progest-api php artisan db:seed
+   docker compose -f docker-compose.local.yml exec progest-api php artisan migrate:fresh --seed
+   ```
+   *Opção B: Criar banco com base fake completa (para desenvolvimento/testes):*
+   ```bash
+   docker compose -f docker-compose.local.yml exec progest-api php artisan migrate:fresh
+   docker compose -f docker-compose.local.yml exec progest-api php artisan db:seed --class=FullSystemSeeder
    ```
 
 -----
@@ -140,4 +146,3 @@ Assim que você tiver o seu domínio oficial (ex: `sistema-hospital.com.br`), si
     > ⚠️ **Aviso Importante:** Repare que o comando de Produção acima **NÃO USA** a flag `-f docker-compose.local.yml`. Ao omitir o arquivo, o Docker lerá os `docker-compose.yml` originais das pastas, que ativam todo o sistema Let's Encrypt de segurança de produção.
     O Traefik cuidará do cadeado, e magicamente o banco de dados e as rotas serão ativadas no seu domínio.
     *(A API ficará automaticamente roteada na camada oculta de segurança no diretório `/api` sob o mesmo domínio do sistema)*
-    > 

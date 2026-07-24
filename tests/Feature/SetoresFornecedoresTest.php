@@ -4,8 +4,8 @@ namespace Tests\Feature;
 
 use Tests\TestCase;
 use App\Models\Setores;
-use App\Models\Unidade;
-use App\Models\SetorFornecedor;
+use App\Models\Polo;
+use App\Models\SetorDistribuidor;
 
 class SetoresFornecedoresTest extends TestCase
 {
@@ -18,7 +18,7 @@ class SetoresFornecedoresTest extends TestCase
         Setores::where('nome', 'LIKE', 'SOLICITANTE%')->delete();
         
         // Criar unidade
-        $unidade = Unidade::factory()->create();
+        $unidade = Polo::factory()->create();
 
         // Criar setor fornecedor existente
         $fornecedor = Setores::create([
@@ -48,7 +48,7 @@ class SetoresFornecedoresTest extends TestCase
         $solicitante = Setores::where('nome', 'SOLICITANTE X')->first();
         $this->assertNotNull($solicitante);
 
-        $rel = SetorFornecedor::where('setor_solicitante_id', $solicitante->id)
+        $rel = SetorDistribuidor::where('setor_solicitante_id', $solicitante->id)
             ->where('setor_distribuidor_id', $fornecedor->id)
             ->first();
 

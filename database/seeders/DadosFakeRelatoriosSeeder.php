@@ -8,13 +8,8 @@ use App\Models\ItensEntrada;
 use App\Models\Movimentacao;
 use App\Models\ItemMovimentacao;
 use App\Models\Setores;
-use App\Models\SetorFornecedor;
 use App\Models\Fornecedor;
 use App\Models\Produto;
-use App\Models\GrupoProduto;
-use App\Models\UnidadeMedida;
-use App\Models\Unidade;
-use App\Models\TipoVinculo;
 use App\Models\User;
 use App\Models\Estoque;
 use App\Models\EstoqueLote;
@@ -23,10 +18,6 @@ use Carbon\Carbon;
 
 class DadosFakeRelatoriosSeeder extends Seeder
 {
-    private $unidades = [];
-    private $tiposVinculo = [];
-    private $gruposProduto = [];
-    private $unidadesMedida = [];
     private $setores = [];
     private $fornecedores = [];
     private $produtos = [];
@@ -34,347 +25,33 @@ class DadosFakeRelatoriosSeeder extends Seeder
 
     public function run()
     {
-        $this->command->info('🚀 Iniciando geração completa de dados fake...');
+        $this->command->info('🚀 Iniciando geração de dados fake para relatórios (baseado na estrutura existente)...');
+
+        $this->setores = Setores::all()->all();
+        $this->fornecedores = Fornecedor::all()->all();
+        $this->produtos = Produto::with('grupoProduto')->get()->all();
+        $this->usuarios = User::all()->all();
+
+        if (empty($this->setores) || empty($this->produtos) || empty($this->usuarios) || empty($this->fornecedores)) {
+            $this->command->error('❌ É necessário rodar os seeders anteriores (PolosESetores, Produtos, Fornecedores, Usuarios) primeiro!');
+            return;
+        }
 
         DB::transaction(function () {
-            // 1. Tipos de Vínculo
-            $this->gerarTiposVinculo();
-
-            // 2. Unidades (Polos)
-            $this->gerarUnidades();
-
-            // 3. Grupos de Produto
-            $this->gerarGruposProduto();
-
-            // 4. Unidades de Medida
-            $this->gerarUnidadesMedida();
-
-            // 5. Setores
-            $this->gerarSetores();
-
-            // 6. Fornecedores
-            $this->gerarFornecedores();
-
-            // 7. Setor-Fornecedor
-            $this->gerarSetorFornecedor();
-
-            // 8. Produtos
-            $this->gerarProdutos();
-
-            // 9. Usuários (usando IDs altos para não conflitar)
-            $this->gerarUsuarios();
-
-            // 10. Usuario-Setor
-            $this->gerarUsuarioSetor();
-
-            // 11. Estoque (auto-criado pelos observers, mas vamos garantir)
+            // 1. Estoque
             $this->garantirEstoque();
 
-            // 12. Entradas
+            // 2. Entradas
             $this->gerarEntradas();
 
-            // 13. Estoque Lote (criado pelas entradas, mas vamos adicionar mais)
+            // 3. Estoque Lote (criado pelas entradas, mas adicionamos mais variações)
             $this->gerarEstoqueLote();
 
-            // 14. Movimentações
+            // 4. Movimentações
             $this->gerarMovimentacoes();
-
-            // 15. Garantir que o admin padrão tenha acesso a tudo
-            $this->vincularAdminAosSetores();
         });
 
-        $this->command->info('✅ Todos os dados fake foram gerados com sucesso!');
-    }
-
-    private function vincularAdminAosSetores()
-    {
-        $admin = User::where('email', 'admin@admin.com')->first();
-        if ($admin) {
-            $this->command->info('🛡️  Vinculando o admin@admin.com a todos os setores fakes...');
-            $syncData = [];
-            foreach ($this->setores as $setor) {
-                $syncData[$setor->id] = ['perfil' => 'almoxarife'];
-            }
-            $admin->setores()->syncWithoutDetaching($syncData);
-        }
-    }
-
-    private function gerarTiposVinculo()
-    {
-        $this->command->info('📋 Gerando tipos de vínculo...');
-
-        $tipos = [
-            ['nome' => 'EFETIVO', 'descricao' => 'Servidor efetivo', 'status' => 'A'],
-            ['nome' => 'TEMPORÁRIO', 'descricao' => 'Contrato temporário', 'status' => 'A'],
-            ['nome' => 'TERCEIRIZADO', 'descricao' => 'Funcionário terceirizado', 'status' => 'A'],
-            ['nome' => 'ESTAGIÁRIO', 'descricao' => 'Estagiário', 'status' => 'A'],
-            ['nome' => 'VOLUNTÁRIO', 'descricao' => 'Voluntário', 'status' => 'A'],
-            ['nome' => 'RESIDENTE', 'descricao' => 'Médico residente', 'status' => 'A'],
-        ];
-
-        foreach ($tipos as $tipo) {
-            $this->tiposVinculo[] = TipoVinculo::firstOrCreate(
-                ['nome' => $tipo['nome']],
-                $tipo
-            );
-        }
-
-        $this->command->info('  ✓ ' . count($this->tiposVinculo) . ' tipos de vínculo criados');
-    }
-
-    private function gerarUnidades()
-    {
-        $this->command->info('🏥 Gerando unidades (polos)...');
-
-        $unidades = [
-            ['nome' => 'HOSPITAL CENTRAL', 'status' => 'A'],
-            ['nome' => 'POSTO DE SAÚDE NORTE', 'status' => 'A'],
-            ['nome' => 'UPA SUL', 'status' => 'A'],
-        ];
-
-        foreach ($unidades as $unidade) {
-            $this->unidades[] = Unidade::firstOrCreate(
-                ['nome' => $unidade['nome']],
-                $unidade
-            );
-        }
-
-        $this->command->info('  ✓ ' . count($this->unidades) . ' unidades criadas');
-    }
-
-    private function gerarGruposProduto()
-    {
-        $this->command->info('📦 Gerando grupos de produto...');
-
-        $grupos = [
-            ['nome' => 'ANTIBIÓTICOS', 'tipo' => 'Medicamento', 'status' => 'A'],
-            ['nome' => 'ANALGÉSICOS', 'tipo' => 'Medicamento', 'status' => 'A'],
-            ['nome' => 'ANTITÉRMICOS', 'tipo' => 'Medicamento', 'status' => 'A'],
-            ['nome' => 'MATERIAL CIRÚRGICO', 'tipo' => 'Material', 'status' => 'A'],
-            ['nome' => 'MATERIAL DE CURATIVOS', 'tipo' => 'Material', 'status' => 'A'],
-            ['nome' => 'EQUIPAMENTOS DESCARTÁVEIS', 'tipo' => 'Material', 'status' => 'A'],
-        ];
-
-        foreach ($grupos as $grupo) {
-            $this->gruposProduto[] = GrupoProduto::firstOrCreate(
-                ['nome' => $grupo['nome']],
-                $grupo
-            );
-        }
-
-        $this->command->info('  ✓ ' . count($this->gruposProduto) . ' grupos de produto criados');
-    }
-
-    private function gerarUnidadesMedida()
-    {
-        $this->command->info('📏 Gerando unidades de medida...');
-
-        $unidades = [
-            ['nome' => 'UNIDADE', 'status' => 'A'],
-            ['nome' => 'CAIXA', 'status' => 'A'],
-            ['nome' => 'FRASCO', 'status' => 'A'],
-            ['nome' => 'AMPOLA', 'status' => 'A'],
-            ['nome' => 'COMPRIMIDO', 'status' => 'A'],
-            ['nome' => 'MILILITRO', 'status' => 'A'],
-        ];
-
-        foreach ($unidades as $unidade) {
-            $this->unidadesMedida[] = UnidadeMedida::firstOrCreate(
-                ['nome' => $unidade['nome']],
-                $unidade
-            );
-        }
-
-        $this->command->info('  ✓ ' . count($this->unidadesMedida) . ' unidades de medida criadas');
-    }
-
-    private function gerarSetores()
-    {
-        $this->command->info('🏢 Gerando setores...');
-
-        $setores = [
-            ['nome' => 'ALMOXARIFADO CENTRAL', 'tipo' => 'Medicamento', 'estoque' => true, 'status' => 'A'],
-            ['nome' => 'FARMÁCIA HOSPITALAR', 'tipo' => 'Medicamento', 'estoque' => true, 'status' => 'A'],
-            ['nome' => 'UTI ADULTO', 'tipo' => 'Medicamento', 'estoque' => false, 'status' => 'A'],
-            ['nome' => 'EMERGÊNCIA', 'tipo' => 'Medicamento', 'estoque' => true, 'status' => 'A'],
-            ['nome' => 'CENTRO CIRÚRGICO', 'tipo' => 'Material', 'estoque' => true, 'status' => 'A'],
-            ['nome' => 'ENFERMARIA GERAL', 'tipo' => 'Material', 'estoque' => false, 'status' => 'A'],
-        ];
-
-        foreach ($setores as $setorData) {
-            $unidade = $this->unidades[array_rand($this->unidades)];
-            $setorData['polo_id'] = $unidade->id;
-            
-            $this->setores[] = Setores::firstOrCreate(
-                ['nome' => $setorData['nome'], 'polo_id' => $unidade->id],
-                $setorData
-            );
-        }
-
-        $this->command->info('  ✓ ' . count($this->setores) . ' setores criados');
-    }
-
-    private function gerarFornecedores()
-    {
-        $this->command->info('🏪 Gerando fornecedores...');
-
-        $fornecedores = [
-            ['tipo_pessoa' => 'J', 'razao_social_nome' => 'DISTRIBUIDORA PHARMA LTDA', 'cnpj' => '11222333000144', 'status' => 'A'],
-            ['tipo_pessoa' => 'J', 'razao_social_nome' => 'MEDIC SUPPLY SA', 'cnpj' => '22333444000155', 'status' => 'A'],
-            ['tipo_pessoa' => 'J', 'razao_social_nome' => 'BRASIL HOSPITALAR LTDA', 'cnpj' => '33444555000166', 'status' => 'A'],
-            ['tipo_pessoa' => 'J', 'razao_social_nome' => 'SAÚDE TOTAL DISTRIBUIDORA', 'cnpj' => '44555666000177', 'status' => 'A'],
-            ['tipo_pessoa' => 'J', 'razao_social_nome' => 'EQUIPAMENTOS MÉDICOS DO NORDESTE', 'cnpj' => '55666777000188', 'status' => 'A'],
-        ];
-
-        foreach ($fornecedores as $fornecedor) {
-            $this->fornecedores[] = Fornecedor::firstOrCreate(
-                ['cnpj' => $fornecedor['cnpj']],
-                $fornecedor
-            );
-        }
-
-        $this->command->info('  ✓ ' . count($this->fornecedores) . ' fornecedores criados');
-    }
-
-    private function gerarSetorFornecedor()
-    {
-        $this->command->info('🔗 Vinculando setores a fornecedores...');
-
-        $count = 0;
-        foreach ($this->setores as $setor) {
-            // Cada setor terá 2-3 fornecedores
-            $numFornecedores = rand(2, 3);
-            $fornecedoresSelecionados = array_rand(array_flip(array_keys($this->fornecedores)), $numFornecedores);
-            
-            if (!is_array($fornecedoresSelecionados)) {
-                $fornecedoresSelecionados = [$fornecedoresSelecionados];
-            }
-
-            foreach ($fornecedoresSelecionados as $index) {
-                SetorFornecedor::firstOrCreate([
-                    'setor_solicitante_id' => $setor->id,
-                    'setor_fornecedor_id' => $this->fornecedores[$index]->id,
-                ]);
-                $count++;
-            }
-        }
-
-        $this->command->info('  ✓ ' . $count . ' vínculos setor-fornecedor criados');
-    }
-
-    private function gerarProdutos()
-    {
-        $this->command->info('💊 Gerando produtos...');
-
-        $produtosMedicamento = [
-            'PARACETAMOL 500MG', 'DIPIRONA 500MG', 'IBUPROFENO 400MG',
-            'AMOXICILINA 500MG', 'AZITROMICINA 500MG', 'CEFALEXINA 500MG',
-            'OMEPRAZOL 20MG', 'RANITIDINA 150MG', 'DEXAMETASONA 4MG',
-        ];
-
-        $produtosMaterial = [
-            'LUVA PROCEDIMENTO M', 'LUVA CIRÚRGICA 7.5', 'MÁSCARA CIRÚRGICA',
-            'SERINGA 10ML', 'AGULHA 40X12', 'CATETER VENOSO 22G',
-            'GAZE ESTERILIZADA', 'ESPARADRAPO 5CM', 'ALGODÃO 500G',
-        ];
-
-        foreach ($produtosMedicamento as $nome) {
-            $grupo = $this->gruposProduto[array_rand(array_filter($this->gruposProduto, fn($g) => $g->tipo === 'Medicamento'))];
-            $unidade = $this->unidadesMedida[array_rand($this->unidadesMedida)];
-
-            $this->produtos[] = Produto::firstOrCreate(
-                ['nome' => $nome],
-                [
-                    'codigo_simpas' => 'MED-' . str_pad(rand(1000, 9999), 4, '0', STR_PAD_LEFT),
-                    'grupo_produto_id' => $grupo->id,
-                    'unidade_medida_id' => $unidade->id,
-                    'status' => 'A',
-                ]
-            );
-        }
-
-        foreach ($produtosMaterial as $nome) {
-            $grupo = $this->gruposProduto[array_rand(array_filter($this->gruposProduto, fn($g) => $g->tipo === 'Material'))];
-            $unidade = $this->unidadesMedida[array_rand($this->unidadesMedida)];
-
-            $this->produtos[] = Produto::firstOrCreate(
-                ['nome' => $nome],
-                [
-                    'codigo_simpas' => 'MAT-' . str_pad(rand(1000, 9999), 4, '0', STR_PAD_LEFT),
-                    'grupo_produto_id' => $grupo->id,
-                    'unidade_medida_id' => $unidade->id,
-                    'status' => 'A',
-                ]
-            );
-        }
-
-        $this->command->info('  ✓ ' . count($this->produtos) . ' produtos criados');
-    }
-
-    private function gerarUsuarios()
-    {
-        $this->command->info('👥 Gerando usuários...');
-
-        $nomes = [
-            'Carlos Silva', 'Maria Santos', 'João Oliveira', 'Ana Costa',
-            'Pedro Almeida', 'Julia Ferreira', 'Lucas Rodrigues', 'Fernanda Lima',
-            'Roberto Souza', 'Patricia Gomes', 'Ricardo Martins', 'Amanda Pereira',
-        ];
-
-        $baseId = User::max('id') ?? 1000; // Usar ID alto para não conflitar
-
-        foreach ($nomes as $index => $nome) {
-            $cpf = '900' . str_pad($baseId + $index, 8, '0', STR_PAD_LEFT);
-            $email = strtolower(str_replace(' ', '.', $nome)) . '@fake.hospital.com';
-            $tipoVinculo = $this->tiposVinculo[array_rand($this->tiposVinculo)];
-
-            $this->usuarios[] = User::firstOrCreate(
-                ['email' => $email],
-                [
-                    'name' => mb_strtoupper($nome),
-                    'cpf' => $cpf,
-                    'telefone' => '71999' . str_pad(rand(100000, 999999), 6, '0', STR_PAD_LEFT),
-                    'data_nascimento' => Carbon::now()->subYears(rand(25, 55))->format('Y-m-d'),
-                    'tipo_vinculo' => $tipoVinculo->id,
-                    'status' => 'A',
-                    'password' => bcrypt('password'),
-                    'email_verified_at' => now(),
-                ]
-            );
-        }
-
-        $this->command->info('  ✓ ' . count($this->usuarios) . ' usuários criados');
-    }
-
-    private function gerarUsuarioSetor()
-    {
-        $this->command->info('👤 Vinculando usuários a setores...');
-
-        $count = 0;
-        $perfis = ['almoxarife', 'solicitante'];
-
-        foreach ($this->usuarios as $usuario) {
-            // Cada usuário terá 1-3 setores
-            $numSetores = rand(1, 3);
-            $setoresSelecionados = array_rand(array_flip(array_keys($this->setores)), min($numSetores, count($this->setores)));
-            
-            if (!is_array($setoresSelecionados)) {
-                $setoresSelecionados = [$setoresSelecionados];
-            }
-
-            foreach ($setoresSelecionados as $index) {
-                DB::table('usuario_setor')->insertOrIgnore([
-                    'usuario_id' => $usuario->id,
-                    'setor_id' => $this->setores[$index]->id,
-                    'perfil' => $perfis[array_rand($perfis)],
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-                $count++;
-            }
-        }
-
-        $this->command->info('  ✓ ' . $count . ' vínculos usuário-setor criados');
+        $this->command->info('✅ Todos os dados fake para relatórios foram gerados com sucesso!');
     }
 
     private function garantirEstoque()
@@ -386,8 +63,8 @@ class DadosFakeRelatoriosSeeder extends Seeder
 
         foreach ($setoresComEstoque as $setor) {
             foreach ($this->produtos as $produto) {
-                // Verificar compatibilidade de tipo
-                if ($produto->grupoProduto->tipo !== $setor->tipo) {
+                // Verificar compatibilidade de tipo (garante que tem grupoProduto com eager load)
+                if ($produto->grupoProduto && $produto->grupoProduto->tipo !== $setor->tipo) {
                     continue;
                 }
 
@@ -415,6 +92,11 @@ class DadosFakeRelatoriosSeeder extends Seeder
 
         $setoresComEstoque = array_filter($this->setores, fn($s) => $s->estoque);
 
+        if (empty($setoresComEstoque)) {
+            $this->command->warn('⚠️ Nenhum setor com estoque habilitado encontrado.');
+            return;
+        }
+
         for ($i = 1; $i <= 150; $i++) {
             $setor = $setoresComEstoque[array_rand($setoresComEstoque)];
             $fornecedor = $this->fornecedores[array_rand($this->fornecedores)];
@@ -432,7 +114,7 @@ class DadosFakeRelatoriosSeeder extends Seeder
 
             // Gerar de 1 a 5 itens por entrada
             $numItens = rand(1, 5);
-            $produtosCompativeis = array_filter($this->produtos, fn($p) => $p->grupoProduto->tipo === $setor->tipo);
+            $produtosCompativeis = array_filter($this->produtos, fn($p) => $p->grupoProduto && $p->grupoProduto->tipo === $setor->tipo);
             
             for ($j = 0; $j < $numItens; $j++) {
                 if (empty($produtosCompativeis)) continue;

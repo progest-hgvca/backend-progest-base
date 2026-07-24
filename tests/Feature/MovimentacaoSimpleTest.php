@@ -8,7 +8,7 @@ use App\Models\ItemMovimentacao;
 use App\Models\Movimentacao;
 use App\Models\Produto;
 use App\Models\Setores;
-use App\Models\Unidade;
+use App\Models\Polo;
 use App\Models\UnidadeMedida;
 use App\Models\User;
 use Tests\TestCase;
@@ -24,7 +24,7 @@ class MovimentacaoSimpleTest extends TestCase
     public function test_movimentacao_corrige_estoque_destino()
     {
         // 1. CRIAR DADOS
-        $unidade = Unidade::factory()->create(['nome' => 'UNIDADE TESTE', 'status' => 'A']);
+        $unidade = Polo::factory()->create(['nome' => 'UNIDADE TESTE', 'status' => 'A']);
         $usuario = User::factory()->create(['name' => 'Usuario Teste']);
 
         $grupo = GrupoProduto::create([

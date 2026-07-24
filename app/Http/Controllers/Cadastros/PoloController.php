@@ -49,6 +49,15 @@ class PoloController
 
             $query = Polo::query();
 
+            $search = $request->input('search');
+            if (!empty($search)) {
+                $searchTerm = '%' . $search . '%';
+                $query->where(function ($q) use ($searchTerm) {
+                    $q->where('nome', 'LIKE', $searchTerm)
+                      ->orWhere('sigla', 'LIKE', $searchTerm);
+                });
+            }
+
             // Aplicar filtros
             foreach ($filters as $condition) {
                 foreach ($condition as $column => $value) {
