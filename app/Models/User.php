@@ -25,7 +25,7 @@ class User extends Authenticatable
         'data_nascimento',
         'cpf',
         'status',
-        'tipo_vinculo',
+        'regime_contratacao_id',
         'usuario_tipo',
         'password'
     ];
@@ -63,12 +63,12 @@ class User extends Authenticatable
     }
 
     /**
-     * Relacionamento com TipoVinculo
-     * Um usuário pertence a um tipo de vínculo
+     * Relacionamento com RegimeContratacao
+     * Um usuário pertence a um regime de contratação
      */
-    public function tipoVinculo()
+    public function regimeContratacao()
     {
-        return $this->belongsTo(\App\Models\TipoVinculo::class, 'tipo_vinculo');
+        return $this->belongsTo(\App\Models\RegimeContratacao::class, 'regime_contratacao_id');
     }
 
     public static function boot()

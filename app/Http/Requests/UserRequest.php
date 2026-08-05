@@ -34,7 +34,7 @@ class UserRequest extends BaseFormRequest
             ],
             'user.data_nascimento' => 'required|date|before:-14 years',
             'user.telefone' => 'nullable|string|max:20',
-            'user.tipo_vinculo' => 'required|exists:tipo_vinculo,id',
+            'user.regime_contratacao_id' => 'required|exists:regime_contratacao_id,id',
             'user.status' => 'required|in:A,I',
 
             'user.password' => [
@@ -102,7 +102,7 @@ class UserRequest extends BaseFormRequest
             'user.email.required' => 'O email do usuário é obrigatório.',
             'user.cpf.required' => 'O CPF do usuário é obrigatório.',
             'user.data_nascimento.required' => 'A data de nascimento do usuário é obrigatória.',
-            'user.tipo_vinculo.required' => 'O tipo de vínculo do usuário é obrigatório.',
+            'user.regime_contratacao_id.required' => 'O tipo de vínculo do usuário é obrigatório.',
             'user.status.required' => 'O status do usuário é obrigatório.',
             'user.password.required' => 'A senha é obrigatória.',
 
@@ -118,7 +118,7 @@ class UserRequest extends BaseFormRequest
             'user.data_nascimento.date' => 'O formato da data de nascimento está incorreto.',
             'user.data_nascimento.before' => 'O usuário deve ter pelo menos 14 anos de idade.',
             'user.password.regex' => 'A senha deve conter pelo menos uma letra maiúscula, uma minúscula e um número.',
-            'user.tipo_vinculo.exists' => 'O tipo de vínculo selecionado não existe.',
+            'user.regime_contratacao_id.exists' => 'O tipo de vínculo selecionado não existe.',
 
             'user.email.unique' => 'Este e-mail já está em uso.',
             'user.cpf.unique' => 'Este CPF já está registrado.',
@@ -134,7 +134,7 @@ class UserRequest extends BaseFormRequest
             'user.cpf' => 'CPF',
             'user.data_nascimento' => 'Data de Nascimento',
             'user.telefone' => 'Telefone',
-            'user.tipo_vinculo' => 'Tipo de Vínculo',
+            'user.regime_contratacao_id' => 'Tipo de Vínculo',
             'user.status' => 'Status',
             'user.password' => 'Senha'
         ];

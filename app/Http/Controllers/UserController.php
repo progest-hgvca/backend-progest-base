@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\User;
-use App\Models\TipoVinculo;
+use App\Models\RegimeContratacao;
 use App\Models\Setores;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
@@ -27,7 +27,7 @@ class UserController extends Controller
             $user->telefone        = isset($dadosValidados['telefone']) ? preg_replace('/\D/', '', $dadosValidados['telefone']) : null;
             $user->data_nascimento = $dadosValidados['data_nascimento'] ?? null;
             $user->cpf             = preg_replace('/\D/', '', $dadosValidados['cpf']);
-            $user->tipo_vinculo    = $dadosValidados['tipo_vinculo'] ?? null;
+            $user->regime_contratacao_id    = $dadosValidados['regime_contratacao_id'] ?? null;
             $user->password        = Hash::make($dadosValidados['password']);
 
             $user->save();
@@ -67,7 +67,7 @@ class UserController extends Controller
             $user->data_nascimento = $dadosValidados['data_nascimento'] ?? null;
             $user->cpf             = preg_replace('/\D/', '', $dadosValidados['cpf']);
             $user->status          = $dadosValidados['status'] ?? $user->status;
-            $user->tipo_vinculo    = $dadosValidados['tipo_vinculo'] ?? null;
+            $user->regime_contratacao_id    = $dadosValidados['regime_contratacao_id'] ?? null;
 
             if (!empty($dadosValidados['password'])) {
                 $user->password = Hash::make($dadosValidados['password']);
@@ -107,10 +107,10 @@ class UserController extends Controller
             });
         }
 
-        // Filtro por tipo_vinculo
-        $tipoVinculo = $request->input('tipo_vinculo');
-        if (!empty($tipoVinculo)) {
-            $query->where('tipo_vinculo', $tipoVinculo);
+        // Filtro por regime_contratacao_id
+        $RegimeContratacao = $request->input('regime_contratacao_id');
+        if (!empty($RegimeContratacao)) {
+            $query->where('regime_contratacao_id', $RegimeContratacao);
         }
 
         // Filtro por status
@@ -124,7 +124,7 @@ class UserController extends Controller
         foreach ($filters as $condition) {
             if (is_array($condition)) {
                 foreach ($condition as $coluna => $valor) {
-                    $colunasPermitidas = ['name', 'email', 'cpf', 'telefone', 'status', 'tipo_vinculo'];
+                    $colunasPermitidas = ['name', 'email', 'cpf', 'telefone', 'status', 'regime_contratacao_id'];
                     if (in_array($coluna, $colunasPermitidas)) {
                         $query->where($coluna, 'LIKE', '%' . $valor . '%');
                     }
@@ -135,7 +135,7 @@ class UserController extends Controller
         // Ordenação dinâmica
         $sortBy  = $request->input('sort_by', 'name');
         $sortDir = $request->input('sort_dir', 'asc');
-        $colunasOrdenacao = ['id', 'name', 'email', 'cpf', 'status', 'tipo_vinculo'];
+        $colunasOrdenacao = ['id', 'name', 'email', 'cpf', 'status', 'regime_contratacao_id'];
         if (in_array($sortBy, $colunasOrdenacao) && in_array(strtolower($sortDir), ['asc', 'desc'])) {
             $query->orderBy($sortBy, $sortDir);
         } else {
@@ -143,7 +143,7 @@ class UserController extends Controller
         }
 
         $users = $query->select(
-            'id', 'name', 'email', 'cpf', 'telefone', 'data_nascimento', 'status', 'tipo_vinculo'
+            'id', 'name', 'email', 'cpf', 'telefone', 'data_nascimento', 'status', 'regime_contratacao_id'
         )->get();
 
         return response()->json(['status' => true, 'data' => $users]);
@@ -159,12 +159,12 @@ class UserController extends Controller
             return response()->json(['status' => false, 'message' => 'Usuário não encontrado']);
         }
 
-        $tipoVinculo = $user->tipo_vinculo ? TipoVinculo::find($user->tipo_vinculo) : null;
+        $RegimeContratacao = $user->regime_contratacao_id ? RegimeContratacao::find($user->regime_contratacao_id) : null;
 
         return response()->json([
             'status'       => true,
             'data'         => $user,
-            'tipo_vinculo' => $tipoVinculo,
+            'regime_contratacao_id' => $RegimeContratacao,
             'setores'      => $user->setores,
         ]);
     }

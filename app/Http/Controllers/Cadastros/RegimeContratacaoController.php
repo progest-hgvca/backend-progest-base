@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers\Cadastros;
 
-use App\Http\Requests\TipoVinculoRequest;
+use App\Http\Requests\RegimeContratacaoRequest;
 use Illuminate\Http\Request;
-use App\Models\TipoVinculo; 
+use App\Models\RegimeContratacao; 
 
-class TipoVinculoController
+class RegimeContratacaoController
 {
-    public function add(TipoVinculoRequest $request){
+    public function add(RegimeContratacaoRequest $request){
 
     }
 
@@ -16,34 +16,34 @@ class TipoVinculoController
         $data = $request->all();
         $filters = $data['filters'] ?? [];  
 
-        $tipoVinculos = $filters;
-        $tipoVinculosQuery = TipoVinculo::query();
+        $regimes = $filters;
+        $regimesQuery = RegimeContratacao::query();
         foreach ($filters as $condition) {
             foreach ($condition as $field => $value) {
-                $tipoVinculosQuery->where($field, $value);
+                $regimesQuery->where($field, $value);
             }
         }
 
         if (!isset($data['paginate'])) {
-            $tipoVinculos = $tipoVinculosQuery
+            $regimes = $regimesQuery
                 ->select('id', 'nome', 'descricao', 'status')
                 ->orderBy('nome')
                 ->get();
         } else {
-            $tipoVinculos = $tipoVinculosQuery
+            $regimes = $regimesQuery
                 ->select('id', 'nome', 'descricao', 'status')
                 ->orderBy('nome')
                 ->get();
         }
 
-        return ['status' => true, 'data' => $tipoVinculos];
+        return ['status' => true, 'data' => $regimes];
     }
 
     public function listData(Request $request){
 
     }
 
-    public function update(TipoVinculoRequest $request){
+    public function update(RegimeContratacaoRequest $request){
 
     }
 

@@ -32,7 +32,7 @@ class AdminInicialSeeder extends Seeder
                 'telefone'        => '00000000000',
                 'data_nascimento' => '1990-01-01',
                 'status'          => 'A',
-                'tipo_vinculo'    => 1,
+                'regime_contratacao_id'    => 1,
                 'created_at'      => $now,
                 'updated_at'      => $now,
             ]

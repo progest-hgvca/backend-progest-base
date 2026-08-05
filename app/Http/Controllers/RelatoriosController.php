@@ -1119,12 +1119,12 @@ class RelatoriosController extends Controller
             // Validação dos filtros
             $validator = Validator::make($data, [
                 'filters.status' => 'nullable|string|in:A,I',
-                'filters.tipo_vinculo_id' => 'nullable|exists:tipo_vinculo,id',
+                'filters.regime_contratacao_id_id' => 'nullable|exists:regime_contratacao_id,id',
                 'filters.setor_id' => 'nullable|exists:setores,id',
                 'filters.perfil' => 'nullable|string|in:admin,almoxarife,solicitante',
             ], [
                 'filters.status.in' => 'Status inválido. Use: A (Ativo) ou I (Inativo).',
-                'filters.tipo_vinculo_id.exists' => 'Tipo de vínculo não encontrado.',
+                'filters.regime_contratacao_id_id.exists' => 'Tipo de vínculo não encontrado.',
                 'filters.setor_id.exists' => 'Setor não encontrado.',
                 'filters.perfil.in' => 'Perfil inválido. Use: admin, almoxarife ou solicitante.',
             ]);
@@ -1139,7 +1139,7 @@ class RelatoriosController extends Controller
 
             // Query base com eager loading para evitar N+1
             $query = \App\Models\User::with([
-                'tipoVinculo:id,nome,descricao,status',
+                'RegimeContratacao:id,nome,descricao,status',
                 'setores:id,nome,tipo,polo_id',
                 'setores.polo:id,nome'
             ]);
@@ -1151,8 +1151,8 @@ class RelatoriosController extends Controller
                 $query->where('status', $filters['status']);
             }
 
-            if (!empty($filters['tipo_vinculo_id'])) {
-                $query->where('tipo_vinculo', $filters['tipo_vinculo_id']);
+            if (!empty($filters['regime_contratacao_id_id'])) {
+                $query->where('regime_contratacao_id', $filters['regime_contratacao_id_id']);
             }
 
             // Filtro por setor: usuários que pertencem ao setor especificado
@@ -1185,12 +1185,12 @@ class RelatoriosController extends Controller
                     'telefone' => $user->telefone,
                     'data_nascimento' => $user->data_nascimento,
                     'status' => $user->status,
-                    'tipo_vinculo_id' => $user->tipo_vinculo,
-                    'tipo_vinculo' => $user->tipoVinculo ? [
-                        'id' => $user->tipoVinculo->id,
-                        'nome' => $user->tipoVinculo->nome,
-                        'descricao' => $user->tipoVinculo->descricao,
-                        'status' => $user->tipoVinculo->status
+                    'regime_contratacao_id_id' => $user->regime_contratacao_id,
+                    'regime_contratacao_id' => $user->RegimeContratacao ? [
+                        'id' => $user->RegimeContratacao->id,
+                        'nome' => $user->RegimeContratacao->nome,
+                        'descricao' => $user->RegimeContratacao->descricao,
+                        'status' => $user->RegimeContratacao->status
                     ] : null,
                     'usuario_tipo' => $user->usuario_tipo,
                     'created_at' => $user->created_at,

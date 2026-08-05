@@ -32,7 +32,7 @@ class UsuariosEPerfisSeeder extends Seeder
                 'telefone'        => '00000000000',
                 'data_nascimento' => '1990-01-01',
                 'status'          => 'A',
-                'tipo_vinculo'    => 1,
+                'regime_contratacao_id'    => 1,
             ],
             // ID = 2 - Solicitante
             [
@@ -43,7 +43,7 @@ class UsuariosEPerfisSeeder extends Seeder
                 'telefone'        => '00000000000',
                 'data_nascimento' => '1990-01-01',
                 'status'          => 'A',
-                'tipo_vinculo'    => 1,
+                'regime_contratacao_id'    => 1,
             ],
             // ID = 3 - Almoxarife
             [
@@ -54,7 +54,7 @@ class UsuariosEPerfisSeeder extends Seeder
                 'telefone'        => '00000000000',
                 'data_nascimento' => '1990-01-01',
                 'status'          => 'A',
-                'tipo_vinculo'    => 1,
+                'regime_contratacao_id'    => 1,
             ],
             // ID = 4 - Admin 2
             [
@@ -65,7 +65,7 @@ class UsuariosEPerfisSeeder extends Seeder
                 'telefone'        => '00000000000',
                 'data_nascimento' => '1990-01-01',
                 'status'          => 'A',
-                'tipo_vinculo'    => 1,
+                'regime_contratacao_id'    => 1,
             ],
         ];
 

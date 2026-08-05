@@ -10,7 +10,7 @@ use App\Http\Controllers\Cadastros\FornecedorController;
 use App\Http\Controllers\Cadastros\ProdutoController;
 use App\Http\Controllers\Cadastros\UnidadeMedidaController;
 use App\Http\Controllers\Cadastros\EstoqueController as CadastrosEstoqueController;
-use App\Http\Controllers\Cadastros\TipoVinculoController;
+use App\Http\Controllers\Cadastros\RegimeContratacaoController;
 use App\Http\Controllers\Cadastros\GrupoProdutoController;
 use App\Http\Controllers\Cadastros\PoloController;
 use App\Http\Controllers\EstoqueController;
@@ -72,18 +72,18 @@ Route::prefix('user')->middleware('auth:sanctum')->group(function () {
     Route::post('/delete/{id}', [UserController::class, 'delete']);
 });
 
-Route::post('/tipoVinculo/add', [TipoVinculoController::class, 'add']);
-Route::post('/tipoVinculo/update', [TipoVinculoController::class, 'update']);
-Route::post('/tipoVinculo/list', [TipoVinculoController::class, 'listAll']);
-Route::post('/tipoVinculo/listData', [TipoVinculoController::class, 'listData']);
-Route::post('/tipoVinculo/delete/{id}', [TipoVinculoController::class, 'delete']);
+Route::post('/RegimeContratacao/add', [RegimeContratacaoController::class, 'add']);
+Route::post('/RegimeContratacao/update', [RegimeContratacaoController::class, 'update']);
+Route::post('/RegimeContratacao/list', [RegimeContratacaoController::class, 'listAll']);
+Route::post('/RegimeContratacao/listData', [RegimeContratacaoController::class, 'listData']);
+Route::post('/RegimeContratacao/delete/{id}', [RegimeContratacaoController::class, 'delete']);
 
 // Rotas alternativas com hífen para compatibilidade
-Route::post('/tipo-vinculo/add', [TipoVinculoController::class, 'add']);
-Route::post('/tipo-vinculo/update', [TipoVinculoController::class, 'update']);
-Route::post('/tipo-vinculo/list', [TipoVinculoController::class, 'listAll']);
-Route::post('/tipo-vinculo/listData', [TipoVinculoController::class, 'listData']);
-Route::post('/tipo-vinculo/delete/{id}', [TipoVinculoController::class, 'delete']);
+Route::post('/regime-contratacao/add', [RegimeContratacaoController::class, 'add']);
+Route::post('/regime-contratacao/update', [RegimeContratacaoController::class, 'update']);
+Route::post('/regime-contratacao/list', [RegimeContratacaoController::class, 'listAll']);
+Route::post('/regime-contratacao/listData', [RegimeContratacaoController::class, 'listData']);
+Route::post('/regime-contratacao/delete/{id}', [RegimeContratacaoController::class, 'delete']);
 
 // @deprecated — rotas /unidade/* mantidas para compatibilidade com frontend legado.
 // Usar /polo/* que aponta para o mesmo PoloController.
