@@ -39,8 +39,9 @@ services:
         restart: unless-stopped
         labels:
             - "traefik.enable=true"
+            - "traefik.docker.network=traefik-public"
             # Configuração do Roteamento Seguro Híbrido da API com o próprio App (Sem CORS)
-            - "traefik.http.routers.progest-api.rule=Host(`${APP_DOMAIN}`) && PathPrefix(`/api`)"
+            - "traefik.http.routers.progest-api.rule=Host(`${APP_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/sanctum`))"
             - "traefik.http.routers.progest-api.entrypoints=websecure"
             - "traefik.http.routers.progest-api.tls=true"
             - "traefik.http.routers.progest-api.tls.certresolver=myresolver"
