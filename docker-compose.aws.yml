@@ -39,8 +39,9 @@ services:
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
       # Rota Agnóstica para testes em IP (HTTP puro)
-      - "traefik.http.routers.progest-api.rule=PathPrefix(`/api`)"
+      - "traefik.http.routers.progest-api.rule=PathPrefix(`/api`) || PathPrefix(`/sanctum`)"
       - "traefik.http.routers.progest-api.entrypoints=web"
       # Porta interna onde a API roda (80)
       - "traefik.http.services.progest-api.loadbalancer.server.port=80"
