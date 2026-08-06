@@ -71,9 +71,17 @@ class PoloController
                 }
             }
 
-            $polos = $query
-                ->orderBy('nome')
-                ->paginate($perPage);
+            // Ordenação dinâmica
+            $sortBy = $request->input('sort_by', 'nome');
+            $sortDir = $request->input('sort_dir', 'asc');
+            $allowedSortColumns = ['id', 'nome', 'sigla', 'status'];
+            if (in_array($sortBy, $allowedSortColumns) && in_array(strtolower($sortDir), ['asc', 'desc'])) {
+                $query->orderBy($sortBy, $sortDir);
+            } else {
+                $query->orderBy('nome', 'asc');
+            }
+
+            $polos = $query->paginate($perPage);
 
             return response()->json([
                 'status' => true,
