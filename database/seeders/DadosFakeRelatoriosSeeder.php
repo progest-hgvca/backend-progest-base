@@ -191,18 +191,26 @@ class DadosFakeRelatoriosSeeder extends Seeder
 
         $tipos = ['T', 'S', 'D']; // T = Transferência, D = Devolução, S = Saída
 
+        // Separar distribuidores (origem distribui) de consumidores (origem solicita)
+        $setoresDistribuidores = array_filter($this->setores, function($s) {
+            $nome = strtolower($s->nome);
+            return str_contains($nome, 'farmácia central') || str_contains($nome, 'farmacia central') || str_contains($nome, 'almoxarifado');
+        });
+
+        $setoresConsumidores = array_filter($this->setores, function($s) {
+            $nome = strtolower($s->nome);
+            return !str_contains($nome, 'farmácia central') && !str_contains($nome, 'farmacia central') && !str_contains($nome, 'almoxarifado');
+        });
+
+        if (empty($setoresConsumidores) || empty($setoresDistribuidores)) {
+            $this->command->warn('⚠️ Não há setores consumidores ou distribuidores suficientes para gerar movimentações.');
+            return;
+        }
+
         for ($i = 1; $i <= 100; $i++) {
-            $setorOrigem = $this->setores[array_rand($this->setores)];
-            $setoresDestino = array_filter($this->setores, function($s) use ($setorOrigem) {
-                $nome = strtolower($s->nome);
-                // Farmácia Central e Almoxarifado não fazem solicitações a outros setores (não são destinos de pedido)
-                $isDistribuidor = str_contains($nome, 'farmácia central') || str_contains($nome, 'almoxarifado');
-                return $s->id !== $setorOrigem->id && !$isDistribuidor;
-            });
-            
-            if (empty($setoresDestino)) continue;
-            
-            $setorDestino = $setoresDestino[array_rand($setoresDestino)];
+            // Regra: origem sempre é um setor CONSUMIDOR fazendo solicitação para um DISTRIBUIDOR
+            $setorOrigem = $setoresConsumidores[array_rand($setoresConsumidores)];
+            $setorDestino = $setoresDistribuidores[array_rand($setoresDistribuidores)];
             $usuario = $this->usuarios[array_rand($this->usuarios)];
             $tipo = $tipos[array_rand($tipos)];
             
