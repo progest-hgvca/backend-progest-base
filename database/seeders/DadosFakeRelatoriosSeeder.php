@@ -193,7 +193,12 @@ class DadosFakeRelatoriosSeeder extends Seeder
 
         for ($i = 1; $i <= 100; $i++) {
             $setorOrigem = $this->setores[array_rand($this->setores)];
-            $setoresDestino = array_filter($this->setores, fn($s) => $s->id !== $setorOrigem->id);
+            $setoresDestino = array_filter($this->setores, function($s) use ($setorOrigem) {
+                $nome = strtolower($s->nome);
+                // Farmácia Central e Almoxarifado não fazem solicitações a outros setores (não são destinos de pedido)
+                $isDistribuidor = str_contains($nome, 'farmácia central') || str_contains($nome, 'almoxarifado');
+                return $s->id !== $setorOrigem->id && !$isDistribuidor;
+            });
             
             if (empty($setoresDestino)) continue;
             
