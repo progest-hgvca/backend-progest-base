@@ -24,7 +24,6 @@ class PolosESetoresSeeder extends Seeder
             ['nome' => 'Hospital Geral',            'sigla' => 'HGVC', 'status' => 'A'],
             ['nome' => 'Hospital Afrânio Peixoto',  'sigla' => 'HAP',  'status' => 'A'],
             ['nome' => 'Hospital Crescêncio Silveira', 'sigla' => 'HCS', 'status' => 'A'],
-            ['nome' => 'UPA',                        'sigla' => 'UPA',  'status' => 'A'],
         ];
 
         foreach ($polos as $polo) {
@@ -45,9 +44,8 @@ class PolosESetoresSeeder extends Seeder
         $hgvc = DB::table('polos')->where('nome', 'Hospital Geral')->first();
         $hap  = DB::table('polos')->where('nome', 'Hospital Afrânio Peixoto')->first();
         $hcs  = DB::table('polos')->where('nome', 'Hospital Crescêncio Silveira')->first();
-        $upa  = DB::table('polos')->where('nome', 'UPA')->first();
 
-        if (!$hgvc || !$hap || !$hcs || !$upa) {
+        if (!$hgvc || !$hap || !$hcs) {
             $this->command->error('Erro ao recuperar os Polos criados.');
             return;
         }
@@ -57,9 +55,8 @@ class PolosESetoresSeeder extends Seeder
             ['polo_id' => $hgvc->id, 'nome' => 'FARMÁCIA CENTRAL',        'estoque' => true,  'status' => 'A', 'tipo' => 'Medicamento'],
             ['polo_id' => $hgvc->id, 'nome' => 'FARMÁCIA DE DISPENSAÇÃO', 'estoque' => true,  'status' => 'A', 'tipo' => 'Medicamento'],
             ['polo_id' => $hgvc->id, 'nome' => 'SATÉLITE DA EMERGÊNCIA',  'estoque' => true,  'status' => 'A', 'tipo' => 'Medicamento'],
-            // HGVC - sem estoque
+            // HGVC - sem estoque (Clínica Médica removida)
             ['polo_id' => $hgvc->id, 'nome' => 'CENTRO CIRÚRGICO',        'estoque' => false, 'status' => 'A', 'tipo' => 'Medicamento'],
-            ['polo_id' => $hgvc->id, 'nome' => 'CLÍNICA MÉDICA',          'estoque' => false, 'status' => 'A', 'tipo' => 'Medicamento'],
             ['polo_id' => $hgvc->id, 'nome' => 'EMERGÊNCIA',              'estoque' => false, 'status' => 'A', 'tipo' => 'Medicamento'],
 
             // HAP - com estoque
@@ -73,12 +70,6 @@ class PolosESetoresSeeder extends Seeder
             // HCS - sem estoque
             ['polo_id' => $hcs->id,  'nome' => 'CLÍNICA MÉDICA',          'estoque' => false, 'status' => 'A', 'tipo' => 'Medicamento'],
             ['polo_id' => $hcs->id,  'nome' => 'CLÍNICA CIRÚRGICA',       'estoque' => false, 'status' => 'A', 'tipo' => 'Medicamento'],
-
-            // UPA - com estoque
-            ['polo_id' => $upa->id,  'nome' => 'ALMOXARIFADO',            'estoque' => true,  'status' => 'A', 'tipo' => 'Medicamento'],
-            // UPA - sem estoque
-            ['polo_id' => $upa->id,  'nome' => 'ÁREA DE ATENDIMENTO',     'estoque' => false, 'status' => 'A', 'tipo' => 'Medicamento'],
-            ['polo_id' => $upa->id,  'nome' => 'POSTO DE ENFERMAGEM',     'estoque' => false, 'status' => 'A', 'tipo' => 'Medicamento'],
         ];
 
         foreach ($setores as $setor) {
@@ -107,7 +98,6 @@ class PolosESetoresSeeder extends Seeder
         $farmDisp        = $setor('FARMÁCIA DE DISPENSAÇÃO', $hgvc->id);
         $satEmerg        = $setor('SATÉLITE DA EMERGÊNCIA',  $hgvc->id);
         $centroCirc      = $setor('CENTRO CIRÚRGICO',        $hgvc->id);
-        $clinicaMedHGVC  = $setor('CLÍNICA MÉDICA',          $hgvc->id);
         $emergencia      = $setor('EMERGÊNCIA',              $hgvc->id);
 
         $almoxHAP        = $setor('ALMOXARIFADO',            $hap->id);
@@ -118,37 +108,29 @@ class PolosESetoresSeeder extends Seeder
         $clinicaMedHCS   = $setor('CLÍNICA MÉDICA',          $hcs->id);
         $clinicaCirHCS   = $setor('CLÍNICA CIRÚRGICA',       $hcs->id);
 
-        $almoxUPA        = $setor('ALMOXARIFADO',            $upa->id);
-        $atendimentoUPA  = $setor('ÁREA DE ATENDIMENTO',     $upa->id);
-        $postoUPA        = $setor('POSTO DE ENFERMAGEM',     $upa->id);
-
         $relacoes = [
-            // HGVC
-            [$farmDisp,       $farmaciaCentral],   
-            [$satEmerg,       $farmaciaCentral],   
-            [$centroCirc,     $farmDisp],           
-            [$clinicaMedHGVC, $farmDisp],           
-            [$emergencia,     $satEmerg],           
+            // HGVC — Farmácia Central distribui para Farmácia de Dispensação e Satélite
+            [$farmDisp,       $farmaciaCentral],
+            [$satEmerg,       $farmaciaCentral],
+            // Farmácia de Dispensação distribui para Centro Cirúrgico
+            [$centroCirc,     $farmDisp],
+            // Satélite distribui para Emergência
+            [$emergencia,     $satEmerg],
 
-            // HAP
-            [$almoxHAP,       $farmaciaCentral],   
-            [$utiHAP,         $almoxHAP],           
-            [$internacaoHAP,  $almoxHAP],           
+            // HAP — Farmácia Central distribui para Almoxarifado; Almoxarifado para UTI e Internação
+            [$almoxHAP,       $farmaciaCentral],
+            [$utiHAP,         $almoxHAP],
+            [$internacaoHAP,  $almoxHAP],
 
-            // HCS
-            [$almoxHCS,       $farmaciaCentral],   
-            [$clinicaMedHCS,  $almoxHCS],           
-            [$clinicaCirHCS,  $almoxHCS],           
-
-            // UPA
-            [$almoxUPA,       $farmaciaCentral],   
-            [$atendimentoUPA, $almoxUPA],           
-            [$postoUPA,       $almoxUPA],           
+            // HCS — Farmácia Central distribui para Almoxarifado; Almoxarifado para Clínicas
+            [$almoxHCS,       $farmaciaCentral],
+            [$clinicaMedHCS,  $almoxHCS],
+            [$clinicaCirHCS,  $almoxHCS],
         ];
 
         foreach ($relacoes as [$solicitante, $distribuidor]) {
             if (!$solicitante || !$distribuidor) {
-                continue; 
+                continue;
             }
             DB::table('setor_distribuidor')->updateOrInsert(
                 [
