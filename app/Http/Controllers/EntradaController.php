@@ -30,6 +30,7 @@ class EntradaController extends Controller
             'itens' => 'required|array|min:1',
             'itens.*.produto_id' => 'required|exists:produtos,id',
             'itens.*.quantidade' => 'required|integer|min:1',
+            'itens.*.valor_unitario' => 'nullable|numeric|min:0',
             'itens.*.lote' => 'required|string|max:50',
             'itens.*.data_vencimento' => 'required|date|after:today',
             'itens.*.data_fabricacao' => 'nullable|date|before_or_equal:today',
@@ -96,6 +97,9 @@ class EntradaController extends Controller
                         'entrada_id' => $entrada->id,
                         'produto_id' => $produto->id,
                         'quantidade' => $item['quantidade'],
+                        'valor_unitario' => isset($item['valor_unitario']) && $item['valor_unitario'] !== '' && $item['valor_unitario'] !== null
+                            ? round((float) $item['valor_unitario'], 4)
+                            : null,
                         'lote' => mb_strtoupper(trim($item['lote'])),
                         'data_vencimento' => $item['data_vencimento'],
                         'data_fabricacao' => $item['data_fabricacao'] ?? null,
