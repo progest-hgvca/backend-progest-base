@@ -374,22 +374,23 @@ class MovimentacaoController extends Controller
         return response()->json(['status' => true]);
     }
 
-    // Atualizar rascunho (substituir itens, atualizar setor de origem e observação)
+    // Atualizar rascunho ou pedido pendente (substituir itens, atualizar setor de origem e observação)
     public function updateRascunho(Request $request, $id)
     {
         $mov = Movimentacao::with('itens')->find($id);
         if (!$mov) {
             return response()->json(['status' => false, 'message' => 'Movimentação não encontrada'], 404);
         }
-        if ($mov->status_solicitacao !== 'C') {
-            return response()->json(['status' => false, 'message' => 'Só é possível editar movimentações em rascunho'], 403);
+        if (!in_array($mov->status_solicitacao, ['C', 'P'])) {
+            return response()->json(['status' => false, 'message' => 'Só é possível editar movimentações em rascunho ou pendentes'], 403);
         }
 
-        $data = $request->only(['setor_origem_id', 'observacao', 'itens']);
+        $data = $request->only(['setor_origem_id', 'observacao', 'itens', 'status_solicitacao']);
 
         $validator = Validator::make($data, [
             'setor_origem_id'                  => 'nullable|integer|exists:setores,id',
             'observacao'                       => 'nullable|string',
+            'status_solicitacao'               => 'nullable|in:C,P',
             'itens'                            => 'required|array|min:1',
             'itens.*.produto_id'               => 'required|integer|exists:produtos,id',
             'itens.*.quantidade_solicitada'    => 'required|numeric|min:0.0001',
@@ -404,6 +405,9 @@ class MovimentacaoController extends Controller
                 // Atualizar campos da movimentação
                 $mov->setor_origem_id = $data['setor_origem_id'] ?? $mov->setor_origem_id;
                 $mov->observacao      = $data['observacao'] ?? $mov->observacao;
+                if (isset($data['status_solicitacao'])) {
+                    $mov->status_solicitacao = $data['status_solicitacao'];
+                }
                 $mov->save();
 
                 // Substituir itens completamente
@@ -426,8 +430,8 @@ class MovimentacaoController extends Controller
 
             return response()->json(['status' => true, 'data' => $mov->fresh('itens.produto', 'setorOrigem', 'setorDestino')]);
         } catch (\Exception $e) {
-            Log::error('Erro ao atualizar rascunho: ' . $e->getMessage());
-            return response()->json(['status' => false, 'message' => 'Erro ao atualizar rascunho', 'detail' => $e->getMessage()], 500);
+            Log::error('Erro ao atualizar rascunho/pendente: ' . $e->getMessage());
+            return response()->json(['status' => false, 'message' => 'Erro ao atualizar pedido', 'detail' => $e->getMessage()], 500);
         }
     }
 
