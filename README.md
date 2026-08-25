@@ -85,7 +85,7 @@ Ideal para simular o ambiente de produção com domínios reais e Proxy Reverso.
 4. **Adicione a `APP_KEY`:** O arquivo `.env.docker.local` precisa referenciar uma chave de criptografia na variável `APP_KEY=`.
     * **Se você tem PHP na máquina (via XAMPP):** rode `php artisan key:generate --show` no terminal, copie o resultado e cole no arquivo.
     * **Se NÃO tem PHP:** deixe em branco por enquanto. Após executar o passo 5 (subir containers), rode o comando `docker compose -f docker-compose.local.yml exec progest-api php artisan key:generate --show`, copie o valor resultante e cole no seu `.env.docker.local`. Por fim, repita o comando do passo 5 para aplicar a nova chave aos containers.
-5.  **Suba os containers localmente:** 
+5.  **Suba os containers localmente (na pasta backend do projeto) :** 
    ```bash
    docker compose -f docker-compose.local.yml up -d --build
    ```
@@ -126,6 +126,11 @@ Ideal para simular o ambiente de produção com domínios reais e Proxy Reverso.
 
   * **Causa:** O Composer checa extensões antes de instalar.
   * **Solução:** No `Dockerfile`, use: `RUN composer install --ignore-platform-reqs`.
+
+### ❌ Erro ao logar no Frontend: `CSRF token mismatch` (usando Docker local)
+
+  * **Causa:** O Laravel envia cookies (Sessão e CSRF) com a flag de segurança `Secure` quando as variáveis de URL no `.env` começam com `https://`. Se o seu Traefik ou Docker local estiver usando HTTP (porta 80 sem certificado SSL), o navegador descarta silenciosamente esses cookies "Secure", o que impede o login no Frontend e causa a rejeição do token CSRF.
+  * **Solução:** No arquivo `.env.docker.local` (ou no seu `.env` local principal), altere o protocolo das variáveis `APP_URL` e `FRONTEND_URL` de `https://` para `http://`. Em seguida, limpe os cookies do navegador e tente novamente.
 
 ---
 

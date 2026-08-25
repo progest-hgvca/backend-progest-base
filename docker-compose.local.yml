@@ -42,12 +42,10 @@ services:
       - "traefik.docker.network=traefik-public"
       # Rota 1: Mantém o domínio antigo (pode ser passado um API_DOMAIN, cai por fallback em api.localhost)
       - "traefik.http.routers.progest-api.rule=Host(`${API_DOMAIN:-api.localhost}`)"
-      - "traefik.http.routers.progest-api.entrypoints=websecure"
-      - "traefik.http.routers.progest-api.tls=true"
+      - "traefik.http.routers.progest-api.entrypoints=web"
       # Rota 2: Mesma URL do frontend para evitar problemas de CORS e SSL warning de Ajax
       - "traefik.http.routers.progest-api-path.rule=(Host(`${APP_DOMAIN:-app.localhost}`) || Host(`localhost`) || Host(`127.0.0.1`)) && (PathPrefix(`/api`) || PathPrefix(`/sanctum`))"
-      - "traefik.http.routers.progest-api-path.entrypoints=websecure"
-      - "traefik.http.routers.progest-api-path.tls=true"
+      - "traefik.http.routers.progest-api-path.entrypoints=web"
       # Porta interna onde a API roda (80)
       - "traefik.http.services.progest-api.loadbalancer.server.port=80"
 

@@ -18,6 +18,7 @@ use App\Http\Controllers\EstoqueLoteController;
 use App\Http\Controllers\EntradaController;
 use App\Http\Controllers\UsuarioSetorController;
 use App\Http\Controllers\RelatoriosController;
+use App\Http\Controllers\MovimentacaoController;
 /*
 |--------------------------------------------------------------------------
 | API Routes
@@ -42,162 +43,204 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
 
+// ============================================================
+// AUTENTICAÇÃO (público)
+// ============================================================
+Route::post("login",    [AuthController::class, 'login']);
+Route::post("register", [AuthController::class, 'register']);
+Route::post("logout",   [AuthController::class, 'logout']);
 
-Route::group(['middleware' => 'auth:sanctum'], function () {
+// ============================================================
+// ROTAS PROTEGIDAS — exigem auth:sanctum
+// ============================================================
+Route::middleware('auth:sanctum')->group(function () {
+
     Route::get('countUsers', [UserController::class, 'countUsers']);
 
-    // Gerenciamento de vínculo usuário <-> setor
-    Route::post('/usuarioSetor/add',            [UsuarioSetorController::class, 'add']);
-    Route::post('/usuarioSetor/update',         [UsuarioSetorController::class, 'update']);
-    Route::post('/usuarioSetor/delete',         [UsuarioSetorController::class, 'delete']);
-    Route::post('/usuarioSetor/listarPorSetor', [UsuarioSetorController::class, 'listarPorSetor']);
+    // --------------------------------------------------------
+    // Vínculo usuário ↔ setor
+    // --------------------------------------------------------
+    Route::post('/usuarioSetor/add',              [UsuarioSetorController::class, 'add']);
+    Route::post('/usuarioSetor/update',           [UsuarioSetorController::class, 'update']);
+    Route::post('/usuarioSetor/delete',           [UsuarioSetorController::class, 'delete']);
+    Route::post('/usuarioSetor/listarPorSetor',   [UsuarioSetorController::class, 'listarPorSetor']);
     Route::post('/usuarioSetor/listarPorUsuario', [UsuarioSetorController::class, 'listarPorUsuario']);
-
     // @deprecated — manter para compatibilidade com frontend legado
-    Route::post('/usuarioSetor/create',      [UsuarioSetorController::class, 'add']);
-    Route::post('/usuarioSetor/listBySetor', [UsuarioSetorController::class, 'listarPorSetor']);
-    Route::post('/usuarioSetor/listByUsuario', [UsuarioSetorController::class, 'listarPorUsuario']);
-});
+    Route::post('/usuarioSetor/create',         [UsuarioSetorController::class, 'add']);
+    Route::post('/usuarioSetor/listBySetor',    [UsuarioSetorController::class, 'listarPorSetor']);
+    Route::post('/usuarioSetor/listByUsuario',  [UsuarioSetorController::class, 'listarPorUsuario']);
 
+    // --------------------------------------------------------
+    // Usuários
+    // --------------------------------------------------------
+    Route::prefix('user')->group(function () {
+        Route::post('/add',            [UserController::class, 'add']);
+        Route::post('/update',         [UserController::class, 'update']);
+        Route::post('/list',           [UserController::class, 'listAll']);
+        Route::post('/listData',       [UserController::class, 'listData']);
+        Route::post('/delete/{id}',    [UserController::class, 'delete']);
+    });
 
-Route::post("login", [AuthController::class, 'login']);
-Route::post("register", [AuthController::class, 'register']);
-Route::post("logout", [AuthController::class, 'logout']);
+    // --------------------------------------------------------
+    // Setores — escrita protegida; leitura pública abaixo
+    // --------------------------------------------------------
+    Route::post('/setores/add',             [SetoresController::class, 'add']);
+    Route::post('/setores/update',          [SetoresController::class, 'update']);
+    Route::post('/setores/delete/{id}',     [SetoresController::class, 'delete']);
+    Route::post('/setores/toggleStatus',    [SetoresController::class, 'toggleStatus']);
+    Route::post('/setores/addDistribuidor',    [SetoresController::class, 'addDistribuidor']);
+    Route::post('/setores/removeDistribuidor', [SetoresController::class, 'removeDistribuidor']);
+    Route::post('/setores/listWithAccess',           [SetoresController::class, 'listWithAccess']);
+    Route::post('/setores/getDetail',                [SetoresController::class, 'getDetail']);
+    Route::post('/setores/listConsumers',            [SetoresController::class, 'listConsumers']);
+    Route::post('/setores/listDistribuidoresParaSetor', [SetoresController::class, 'listDistribuidoresParaSetor']);
 
-Route::prefix('user')->middleware('auth:sanctum')->group(function () {
-    Route::post('/add', [UserController::class, 'add']);
-    Route::post('/update', [UserController::class, 'update']);
-    Route::post('/list', [UserController::class, 'listAll']);
-    Route::post('/listData', [UserController::class, 'listData']);
-    Route::post('/delete/{id}', [UserController::class, 'delete']);
-});
+    // --------------------------------------------------------
+    // Estoque — todas as rotas protegidas
+    // --------------------------------------------------------
+    Route::get('/estoque/setor/{setorId}',          [EstoqueController::class, 'listarPorSetor']);
+    Route::get('/estoque/{id}',                     [EstoqueController::class, 'show']);
+    Route::put('/estoque/{id}/quantidade-minima',   [EstoqueController::class, 'atualizarQuantidadeMinima']);
+    Route::put('/estoque/{id}/status',              [EstoqueController::class, 'atualizarStatus']);
+    // Rotas antigas do estoque (compatibilidade)
+    Route::post('/estoque/add',       [CadastrosEstoqueController::class, 'add']);
+    Route::post('/estoque/update',    [CadastrosEstoqueController::class, 'update']);
+    Route::post('/estoque/list',      [CadastrosEstoqueController::class, 'listAll']);
+    Route::post('/estoque/listData',  [CadastrosEstoqueController::class, 'listData']);
+    Route::post('/estoque/delete/{id}', [CadastrosEstoqueController::class, 'delete']);
 
-Route::post('/RegimeContratacao/add', [RegimeContratacaoController::class, 'add']);
-Route::post('/RegimeContratacao/update', [RegimeContratacaoController::class, 'update']);
-Route::post('/RegimeContratacao/list', [RegimeContratacaoController::class, 'listAll']);
-Route::post('/RegimeContratacao/listData', [RegimeContratacaoController::class, 'listData']);
-Route::post('/RegimeContratacao/delete/{id}', [RegimeContratacaoController::class, 'delete']);
+    // --------------------------------------------------------
+    // Lotes de estoque
+    // --------------------------------------------------------
+    Route::post('/estoqueLote/list',             [EstoqueLoteController::class, 'list']);
+    Route::post('/estoqueLote/updateQuantidade', [EstoqueLoteController::class, 'updateQuantidade']);
 
-// Rotas alternativas com hífen para compatibilidade
-Route::post('/regime-contratacao/add', [RegimeContratacaoController::class, 'add']);
-Route::post('/regime-contratacao/update', [RegimeContratacaoController::class, 'update']);
-Route::post('/regime-contratacao/list', [RegimeContratacaoController::class, 'listAll']);
-Route::post('/regime-contratacao/listData', [RegimeContratacaoController::class, 'listData']);
-Route::post('/regime-contratacao/delete/{id}', [RegimeContratacaoController::class, 'delete']);
+    // --------------------------------------------------------
+    // Produtos — escrita protegida; leitura pública abaixo
+    // --------------------------------------------------------
+    Route::post('/produtos/add',            [ProdutoController::class, 'add']);
+    Route::post('/produtos/update',         [ProdutoController::class, 'update']);
+    Route::post('/produtos/delete/{id}',    [ProdutoController::class, 'delete']);
+    Route::post('/produtos/toggleStatus',   [ProdutoController::class, 'toggleStatus']);
 
-// @deprecated — rotas /unidade/* mantidas para compatibilidade com frontend legado.
-// Usar /polo/* que aponta para o mesmo PoloController.
-Route::post('/unidade/add',          [PoloController::class, 'add']);
-Route::post('/unidade/update',       [PoloController::class, 'update']);
-Route::post('/unidade/list',         [PoloController::class, 'listAll']);
-Route::post('/unidade/listData',     [PoloController::class, 'listData']);
-Route::post('/unidade/delete/{id}',  [PoloController::class, 'delete']);
-Route::post('/unidade/toggleStatus', [PoloController::class, 'toggleStatus']);
+    // --------------------------------------------------------
+    // Entradas de NF — todas as rotas protegidas
+    // --------------------------------------------------------
+    Route::post('/entrada/add',    [EntradaController::class, 'add']);
+    Route::post('/entrada/update', [EntradaController::class, 'update']);
+    Route::post('/entrada/delete', [EntradaController::class, 'delete']);
 
-// Rotas canônicas para polos
-Route::post('/polo/add',          [PoloController::class, 'add']);
-Route::post('/polo/update',       [PoloController::class, 'update']);
+    // --------------------------------------------------------
+    // Movimentações — todas as rotas protegidas
+    // --------------------------------------------------------
+    Route::post('/movimentacao/add',                   [MovimentacaoController::class, 'store']);
+    Route::match(['get', 'post'], '/movimentacao/listBySetor',   [MovimentacaoController::class, 'listBySetor']);
+    Route::match(['get', 'post'], '/movimentacao/listByUnidade', [MovimentacaoController::class, 'listBySetor']); // legado
+    Route::get('/movimentacao/{id}',                   [MovimentacaoController::class, 'show']);
+    Route::get('/movimentacao/{id}/preview-lotes',     [MovimentacaoController::class, 'previewLotes']);
+    Route::post('/movimentacao/{id}/process',          [MovimentacaoController::class, 'process']);
+    Route::post('/movimentacao/{id}/delete',           [MovimentacaoController::class, 'destroy']);
+    Route::post('/movimentacoes/{id}/status',          [MovimentacaoController::class, 'updateStatus']);
+    Route::post('/movimentacao/{id}/update-rascunho',  [MovimentacaoController::class, 'updateRascunho']);
+
+    // --------------------------------------------------------
+    // Polo / Unidade — escrita protegida; leitura pública abaixo
+    // --------------------------------------------------------
+    Route::post('/polo/add',           [PoloController::class, 'add']);
+    Route::post('/polo/update',        [PoloController::class, 'update']);
+    Route::post('/polo/delete/{id}',   [PoloController::class, 'delete']);
+    Route::post('/polo/toggleStatus',  [PoloController::class, 'toggleStatus']);
+    // @deprecated — manter para compatibilidade
+    Route::post('/unidade/add',          [PoloController::class, 'add']);
+    Route::post('/unidade/update',       [PoloController::class, 'update']);
+    Route::post('/unidade/delete/{id}',  [PoloController::class, 'delete']);
+    Route::post('/unidade/toggleStatus', [PoloController::class, 'toggleStatus']);
+
+    // --------------------------------------------------------
+    // Regime de Contratação — escrita protegida; leitura pública abaixo
+    // --------------------------------------------------------
+    Route::post('/RegimeContratacao/add',           [RegimeContratacaoController::class, 'add']);
+    Route::post('/RegimeContratacao/update',        [RegimeContratacaoController::class, 'update']);
+    Route::post('/RegimeContratacao/delete/{id}',   [RegimeContratacaoController::class, 'delete']);
+    Route::post('/regime-contratacao/add',          [RegimeContratacaoController::class, 'add']);
+    Route::post('/regime-contratacao/update',       [RegimeContratacaoController::class, 'update']);
+    Route::post('/regime-contratacao/delete/{id}',  [RegimeContratacaoController::class, 'delete']);
+
+    // --------------------------------------------------------
+    // Grupo de Produto — escrita protegida; leitura pública abaixo
+    // --------------------------------------------------------
+    Route::post('/grupoProduto/add',         [GrupoProdutoController::class, 'add']);
+    Route::post('/grupoProduto/update',      [GrupoProdutoController::class, 'update']);
+    Route::post('/grupoProduto/delete/{id}', [GrupoProdutoController::class, 'delete']);
+
+    // --------------------------------------------------------
+    // Fornecedores — escrita protegida; leitura pública abaixo
+    // --------------------------------------------------------
+    Route::post('/fornecedores/add',           [FornecedorController::class, 'add']);
+    Route::post('/fornecedores/update',        [FornecedorController::class, 'update']);
+    Route::post('/fornecedores/delete/{id}',   [FornecedorController::class, 'delete']);
+    Route::post('/fornecedores/toggleStatus',  [FornecedorController::class, 'toggleStatus']);
+
+    // --------------------------------------------------------
+    // Unidade de Medida — escrita protegida; leitura pública abaixo
+    // --------------------------------------------------------
+    Route::post('/unidadeMedida/add',         [UnidadeMedidaController::class, 'add']);
+    Route::post('/unidadeMedida/update',      [UnidadeMedidaController::class, 'update']);
+    Route::post('/unidadeMedida/delete/{id}', [UnidadeMedidaController::class, 'delete']);
+
+    // --------------------------------------------------------
+    // Relatórios — exige autenticação (perfil verificado no controller)
+    // --------------------------------------------------------
+    Route::post('/relatorios/entradas/list',           [RelatoriosController::class, 'listEntradasReport']);
+    Route::post('/relatorios/movimentacoes/list',      [RelatoriosController::class, 'listMovimentacoesReport']);
+    Route::post('/relatorios/saidas/list',             [RelatoriosController::class, 'listSaidasReport']);
+    Route::post('/relatorios/saidas-por-data/list',    [RelatoriosController::class, 'listSaidasPorData']);
+    Route::post('/relatorios/entradas-por-data/list',  [RelatoriosController::class, 'listEntradasPorData']);
+    Route::post('/relatorios/estoque/list',            [RelatoriosController::class, 'listEstoqueReport']);
+    Route::post('/relatorios/usuarios/list',           [RelatoriosController::class, 'listUsuariosReport']);
+
+}); // fim middleware auth:sanctum
+
+// ============================================================
+// ROTAS PÚBLICAS DE LEITURA — catálogos acessíveis sem login
+// (usados em formulários de cadastro antes de autenticação)
+// ============================================================
+
+// Setores — leitura pública (seleção de setor no login)
+Route::post('/setores/list',     [SetoresController::class, 'listAll']);
+Route::post('/setores/listData', [SetoresController::class, 'listData']);
+
+// Produtos — leitura pública (catálogo de busca)
+Route::post('/produtos/list',            [ProdutoController::class, 'listAll']);
+Route::post('/produtos/listData',        [ProdutoController::class, 'listData']);
+Route::post('/produtos/dadosAuxiliares', [ProdutoController::class, 'getDadosAuxiliares']);
+Route::post('/produtos/listByTipo',      [ProdutoController::class, 'listByTipo']);
+
+// Entrada — leitura pública
+Route::post('/entrada/list', [EntradaController::class, 'list']);
+
+// Polo / Unidade — leitura pública
 Route::post('/polo/list',         [PoloController::class, 'listAll']);
 Route::post('/polo/listData',     [PoloController::class, 'listData']);
-Route::post('/polo/delete/{id}',  [PoloController::class, 'delete']);
-Route::post('/polo/toggleStatus', [PoloController::class, 'toggleStatus']);
+Route::post('/unidade/list',      [PoloController::class, 'listAll']);
+Route::post('/unidade/listData',  [PoloController::class, 'listData']);
 
-// Rotas antigas de unidades removidas - usar /setores
+// Regime de Contratação — leitura pública (usado no cadastro de usuário)
+Route::post('/RegimeContratacao/list',     [RegimeContratacaoController::class, 'listAll']);
+Route::post('/RegimeContratacao/listData', [RegimeContratacaoController::class, 'listData']);
+Route::post('/regime-contratacao/list',    [RegimeContratacaoController::class, 'listAll']);
+Route::post('/regime-contratacao/listData',[RegimeContratacaoController::class, 'listData']);
 
-Route::post('/setores/add', [SetoresController::class, 'add']);
-Route::post('/setores/update', [SetoresController::class, 'update']);
-Route::post('/setores/list', [SetoresController::class, 'listAll']);
-Route::post('/setores/listData', [SetoresController::class, 'listData']);
-Route::post('/setores/delete/{id}', [SetoresController::class, 'delete']);
-Route::post('/setores/toggleStatus', [SetoresController::class, 'toggleStatus']);
-Route::middleware('auth:sanctum')->group(function () {
-    Route::post('/setores/addDistribuidor', [SetoresController::class, 'addDistribuidor']);
-    Route::post('/setores/removeDistribuidor', [SetoresController::class, 'removeDistribuidor']);
-});
-Route::middleware('auth:sanctum')->post('/setores/listWithAccess', [SetoresController::class, 'listWithAccess']);
-Route::middleware('auth:sanctum')->post('/setores/getDetail', [SetoresController::class, 'getDetail']);
-Route::middleware('auth:sanctum')->post('/setores/listConsumers', [SetoresController::class, 'listConsumers']);
-Route::middleware('auth:sanctum')->post('/setores/listDistribuidoresParaSetor', [SetoresController::class, 'listDistribuidoresParaSetor']);
-
-// Rotas dos módulos produtos, categoriasProdutos e unidadesMedida foram removidas
-// Use os novos módulos: Produto, GrupoProduto e UnidadeMedida
-
-// Rotas para tabela nova `unidade_medida` (singular)
-Route::post('/unidadeMedida/add', [UnidadeMedidaController::class, 'add']);
-Route::post('/unidadeMedida/update', [UnidadeMedidaController::class, 'update']);
-Route::post('/unidadeMedida/list', [UnidadeMedidaController::class, 'listAll']);
-Route::post('/unidadeMedida/listData', [UnidadeMedidaController::class, 'listData']);
-Route::post('/unidadeMedida/delete/{id}', [UnidadeMedidaController::class, 'delete']);
-
-// Rotas para fornecedores
-Route::post('/fornecedores/add', [FornecedorController::class, 'add']);
-Route::post('/fornecedores/update', [FornecedorController::class, 'update']);
-Route::post('/fornecedores/list', [FornecedorController::class, 'listAll']);
-Route::post('/fornecedores/listData', [FornecedorController::class, 'listData']);
-Route::post('/fornecedores/delete/{id}', [FornecedorController::class, 'delete']);
-Route::post('/fornecedores/toggleStatus', [FornecedorController::class, 'toggleStatus']);
-
-// Rotas para produtos
-Route::post('/produtos/add', [ProdutoController::class, 'add']);
-Route::post('/produtos/update', [ProdutoController::class, 'update']);
-Route::post('/produtos/list', [ProdutoController::class, 'listAll']);
-Route::post('/produtos/listData', [ProdutoController::class, 'listData']);
-Route::post('/produtos/delete/{id}', [ProdutoController::class, 'delete']);
-Route::post('/produtos/toggleStatus', [ProdutoController::class, 'toggleStatus']);
-Route::post('/produtos/dadosAuxiliares', [ProdutoController::class, 'getDadosAuxiliares']);
-Route::post('/produtos/listByTipo', [ProdutoController::class, 'listByTipo']);
-
-Route::post('/entrada/add', [EntradaController::class, 'add']);
-Route::post('/entrada/list', [EntradaController::class, 'list']);
-Route::post('/entrada/update', [EntradaController::class, 'update']);
-Route::post('/entrada/delete', [EntradaController::class, 'delete']);
-
-// Rotas para movimentações
-use App\Http\Controllers\MovimentacaoController;
-
-Route::post('/movimentacao/add', [MovimentacaoController::class, 'store']);
-Route::match(['get', 'post'], '/movimentacao/listBySetor', [MovimentacaoController::class, 'listBySetor']);
-// Rota legado para compatibilidade com front que ainda chama "listByUnidade"
-Route::match(['get', 'post'], '/movimentacao/listByUnidade', [MovimentacaoController::class, 'listBySetor']);
-Route::get('/movimentacao/{id}', [MovimentacaoController::class, 'show']);
-Route::get('/movimentacao/{id}/preview-lotes', [MovimentacaoController::class, 'previewLotes']);
-Route::post('/movimentacao/{id}/process', [MovimentacaoController::class, 'process']);
-Route::post('/movimentacao/{id}/delete', [MovimentacaoController::class, 'destroy']);
-Route::post('/movimentacoes/{id}/status', [MovimentacaoController::class, 'updateStatus']);
-Route::post('/movimentacao/{id}/update-rascunho', [MovimentacaoController::class, 'updateRascunho']);
-
-// Rotas antigas do estoque (para manter compatibilidade)
-Route::post('/estoque/add', [CadastrosEstoqueController::class, 'add']);
-Route::post('/estoque/update', [CadastrosEstoqueController::class, 'update']);
-Route::post('/estoque/list', [CadastrosEstoqueController::class, 'listAll']);
-Route::post('/estoque/listData', [CadastrosEstoqueController::class, 'listData']);
-Route::post('/estoque/delete/{id}', [CadastrosEstoqueController::class, 'delete']);
-
-// Novas rotas do módulo de estoque
-Route::get('/estoque/setor/{setorId}', [EstoqueController::class, 'listarPorSetor']);
-Route::get('/estoque/{id}', [EstoqueController::class, 'show']);
-Route::put('/estoque/{id}/quantidade-minima', [EstoqueController::class, 'atualizarQuantidadeMinima']);
-Route::put('/estoque/{id}/status', [EstoqueController::class, 'atualizarStatus']);
-
-Route::post('/grupoProduto/add', [GrupoProdutoController::class, 'add']);
-Route::post('/grupoProduto/update', [GrupoProdutoController::class, 'update']);
-Route::post('/grupoProduto/list', [GrupoProdutoController::class, 'listAll']);
+// Grupo de Produto — leitura pública
+Route::post('/grupoProduto/list',     [GrupoProdutoController::class, 'listAll']);
 Route::post('/grupoProduto/listData', [GrupoProdutoController::class, 'listData']);
-Route::post('/grupoProduto/delete/{id}', [GrupoProdutoController::class, 'delete']);
 
-// Rotas para controle de lotes no estoque
-Route::post('/estoqueLote/list', [EstoqueLoteController::class, 'list']);
-Route::post('/estoqueLote/updateQuantidade', [EstoqueLoteController::class, 'updateQuantidade']);
+// Fornecedores — leitura pública
+Route::post('/fornecedores/list',    [FornecedorController::class, 'listAll']);
+Route::post('/fornecedores/listData',[FornecedorController::class, 'listData']);
 
-// Rotas para relatórios — exige autenticação via Sanctum
-// (controle de perfil é feito no próprio controller via usuario_setor)
-Route::middleware('auth:sanctum')->group(function () {
-    Route::post('/relatorios/entradas/list', [RelatoriosController::class, 'listEntradasReport']);
-    Route::post('/relatorios/movimentacoes/list', [RelatoriosController::class, 'listMovimentacoesReport']);
-    Route::post('/relatorios/saidas/list', [RelatoriosController::class, 'listSaidasReport']);
-    Route::post('/relatorios/saidas-por-data/list', [RelatoriosController::class, 'listSaidasPorData']);
-    Route::post('/relatorios/entradas-por-data/list', [RelatoriosController::class, 'listEntradasPorData']);
-    Route::post('/relatorios/estoque/list', [RelatoriosController::class, 'listEstoqueReport']);
-    Route::post('/relatorios/usuarios/list', [RelatoriosController::class, 'listUsuariosReport']);
-});
+// Unidade de Medida — leitura pública
+Route::post('/unidadeMedida/list',    [UnidadeMedidaController::class, 'listAll']);
+Route::post('/unidadeMedida/listData',[UnidadeMedidaController::class, 'listData']);
+
 
