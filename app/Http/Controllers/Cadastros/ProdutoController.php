@@ -163,6 +163,24 @@ class ProdutoController
     public function add(ProdutoRequest $request)
     {
         try {
+            $user = auth()->user();
+            if (!$user->isSuperAdmin()) {
+                $hasCAFAccess = \Illuminate\Support\Facades\DB::table('usuario_setor')
+                    ->join('setores', 'usuario_setor.setor_id', '=', 'setores.id')
+                    ->leftJoin('setor_distribuidor', 'setores.id', '=', 'setor_distribuidor.setor_solicitante_id')
+                    ->where('usuario_setor.usuario_id', $user->id)
+                    ->whereIn('usuario_setor.perfil', ['admin', 'almoxarife'])
+                    ->whereNull('setor_distribuidor.id')
+                    ->exists();
+
+                if (!$hasCAFAccess) {
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'Criacao de produtos permitida apenas para administradores e almoxarifes da CAF.'
+                    ], 403);
+                }
+            }
+
             $data = $request->validated()['produto'];
 
             $produto = new Produto();

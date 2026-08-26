@@ -160,6 +160,32 @@ class MovimentacaoController extends Controller
             return response()->json(['status' => false, 'message' => "action inválida: '$action'"], 422);
         }
 
+        $user = auth()->user();
+        if (!$user->isSuperAdmin()) {
+            if (in_array($action, ['approve', 'reject'])) {
+                // O setor de origem (que vai fornecer o item) é quem aprova/reprova
+                $podeAprovar = \Illuminate\Support\Facades\DB::table('usuario_setor')
+                    ->where('usuario_id', $user->id)
+                    ->where('setor_id', $mov->setor_origem_id)
+                    ->whereIn('perfil', ['admin', 'almoxarife'])
+                    ->exists();
+                
+                if (!$podeAprovar) {
+                    return response()->json(['status' => false, 'message' => 'Permissão negada. Apenas administradores ou almoxarifes do setor fornecedor podem aprovar ou reprovar pedidos.'], 403);
+                }
+            } elseif (in_array($action, ['submit', 'cancel'])) {
+                // O setor de destino (que pediu o item) é quem pode enviar rascunho ou cancelar
+                $podeEditar = \Illuminate\Support\Facades\DB::table('usuario_setor')
+                    ->where('usuario_id', $user->id)
+                    ->where('setor_id', $mov->setor_destino_id)
+                    ->exists(); 
+
+                if (!$podeEditar) {
+                    return response()->json(['status' => false, 'message' => 'Permissão negada. Você não pertence ao setor solicitante.'], 403);
+                }
+            }
+        }
+
         try {
             DB::beginTransaction();
 
@@ -249,12 +275,15 @@ class MovimentacaoController extends Controller
                     ]);
 
                     // 1b. DEDUZIR dos lotes da ORIGEM (FIFO: vencimento mais próximo primeiro)
-                    $this->transferirLotesFifo(
+                    $lotesTransferidos = $this->transferirLotesFifo(
                         $item->produto_id,
                         $mov->setor_origem_id,
                         $mov->setor_destino_id,
                         $qtdLiberar
                     );
+
+                    $item->lote = json_encode($lotesTransferidos);
+                    $item->save();
 
                     // 2. INCREMENTAR o estoque de DESTINO
                     $estoqueDestino = Estoque::where('produto_id', $item->produto_id)
@@ -492,9 +521,10 @@ class MovimentacaoController extends Controller
      * Transfere quantidades entre lotes seguindo FIFO (vencimento mais próximo primeiro).
      * Deduz do setor de origem e incrementa no setor de destino (criando o registro se necessário).
      */
-    private function transferirLotesFifo(int $produtoId, int $setorOrigemId, ?int $setorDestinoId, float $qtdLiberar): void
+    private function transferirLotesFifo(int $produtoId, int $setorOrigemId, ?int $setorDestinoId, float $qtdLiberar): array
     {
         $restante = $qtdLiberar;
+        $lotesConsumidos = [];
 
         $lotes = EstoqueLote::where('produto_id', $produtoId)
             ->where('setor_id', $setorOrigemId)
@@ -512,6 +542,12 @@ class MovimentacaoController extends Controller
             $lote->quantidade_disponivel -= $qtdDeducao;
             $lote->save();
             $restante -= $qtdDeducao;
+            
+            $lotesConsumidos[] = [
+                'lote' => $lote->lote,
+                'data_vencimento' => $lote->data_vencimento,
+                'qtd' => $qtdDeducao
+            ];
 
             Log::info('EstoqueLote origem descontado', [
                 'lote'            => $lote->lote,
@@ -545,5 +581,7 @@ class MovimentacaoController extends Controller
                 ]);
             }
         }
+        
+        return $lotesConsumidos;
     }
 }

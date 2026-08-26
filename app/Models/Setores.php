@@ -24,6 +24,32 @@ class Setores extends Model
         'estoque' => 'boolean',
     ];
 
+    protected $appends = ['nome_exibicao'];
+
+    /**
+     * Acessor para retornar o nome do setor com a sigla do polo
+     */
+    public function getNomeExibicaoAttribute()
+    {
+        // Precisamos verificar se o relacionamento já está carregado para evitar N+1 
+        // ou garantir que seja resolvido caso necessário
+        if ($this->relationLoaded('polo') && $this->polo) {
+            return $this->nome . ' (' . $this->polo->sigla . ')';
+        }
+        
+        // Retorno de fallback caso polo_id exista mas não tenha sido carregado na query,
+        // carrega on-demand
+        if ($this->polo_id) {
+            // Usa o relacionamento polo diretamente, o que pode engatilhar lazy loading
+            $polo = $this->polo;
+            if ($polo) {
+                return $this->nome . ' (' . $polo->sigla . ')';
+            }
+        }
+
+        return $this->nome;
+    }
+
     /**
      * Relacionamento com polo
      */

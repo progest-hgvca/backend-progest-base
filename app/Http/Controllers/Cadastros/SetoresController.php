@@ -108,8 +108,17 @@ class SetoresController
         $data    = $request->all();
         $filters = $data['filters'] ?? [];
 
+        $user = auth()->user();
+        
         // Eager load distribuidores relacionados
         $query = Setores::with(['polo', 'distribuidoresRelacionados.distribuidor.polo']);
+
+        if ($user && !$user->isSuperAdmin()) {
+            $setoresPermitidos = \Illuminate\Support\Facades\DB::table('usuario_setor')
+                ->where('usuario_id', $user->id)
+                ->pluck('setor_id');
+            $query->whereIn('id', $setoresPermitidos);
+        }
 
         foreach ($filters as $condition) {
             foreach ($condition as $coluna => $valor) {
