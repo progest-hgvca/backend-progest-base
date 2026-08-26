@@ -14,11 +14,22 @@ class GrupoProduto extends Model
     protected $fillable = [
         'nome',
         'status',
-        'tipo'
+        'tipo',
+        'controlado'
+    ];
+
+    protected $casts = [
+        'controlado' => 'boolean',
     ];
 
     public function produtos()
     {
         return $this->hasMany(Produto::class, 'grupo_produto_id');
+    }
+
+    /** Apenas grupos de medicamentos controlados (Portaria 344/98) */
+    public function scopeControlado($query)
+    {
+        return $query->where('controlado', true);
     }
 }

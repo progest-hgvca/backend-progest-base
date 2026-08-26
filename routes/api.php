@@ -198,6 +198,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/relatorios/entradas-por-data/list',  [RelatoriosController::class, 'listEntradasPorData']);
     Route::post('/relatorios/estoque/list',            [RelatoriosController::class, 'listEstoqueReport']);
     Route::post('/relatorios/usuarios/list',           [RelatoriosController::class, 'listUsuariosReport']);
+    Route::post('/relatorios/medicamentos-controlados/list', [RelatoriosController::class, 'listMedicamentosControladosReport']);
 
 }); // fim middleware auth:sanctum
 

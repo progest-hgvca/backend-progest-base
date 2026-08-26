@@ -961,8 +961,8 @@ class RelatoriosController extends Controller
 
             // Query base com eager loading para evitar N+1
             $query = \App\Models\Estoque::with([
-                'produto:id,nome,codigo_simpas,codigo_barras,grupo_produto_id,unidade_medida_id',
-                'produto.grupoProduto:id,nome,tipo',
+                'produto:id,nome,codigo_simpas,codigo_barras,grupo_produto_id,lista_portaria,unidade_medida_id',
+                'produto.grupoProduto:id,nome,tipo,controlado',
                 'produto.unidadeMedida:id,nome',
                 'setor:id,polo_id,nome,tipo',
                 'setor.polo:id,nome'
@@ -1250,6 +1250,284 @@ class RelatoriosController extends Controller
             return response()->json([
                 'status' => false,
                 'message' => 'Erro ao gerar relatório de usuários'
+            ], 500);
+        }
+    }
+    /**
+     * Relatório de Medicamentos Controlados
+     * POST /api/relatorios/medicamentos-controlados/list
+     *
+     * Lista o estoque dos produtos pertencentes a grupos marcados como
+     * controlados (Portaria SVS/MS 344/98), com lotes, validade e o
+     * movimento de entradas/saídas do período informado.
+     *
+     * Filtros: polo_id, setor_id, grupo_produto_id, lista_portaria,
+     *          produto_id, date_from, date_to, somente_com_saldo
+     */
+    public function listMedicamentosControladosReport(Request $request)
+    {
+        try {
+            $data = $request->all();
+
+            $validator = Validator::make($data, [
+                'filters.polo_id' => 'nullable|exists:polos,id',
+                'filters.setor_id' => 'nullable|exists:setores,id',
+                'filters.grupo_produto_id' => 'nullable|exists:grupo_produto,id',
+                'filters.produto_id' => 'nullable|exists:produtos,id',
+                'filters.lista_portaria' => 'nullable|string|max:5',
+                'filters.date_from' => 'nullable|date',
+                'filters.date_to' => 'nullable|date|after_or_equal:filters.date_from',
+                'filters.somente_com_saldo' => 'nullable|boolean',
+            ], [
+                'filters.polo_id.exists' => 'Polo não encontrado.',
+                'filters.setor_id.exists' => 'Setor não encontrado.',
+                'filters.grupo_produto_id.exists' => 'Grupo de produto não encontrado.',
+                'filters.produto_id.exists' => 'Produto não encontrado.',
+                'filters.date_to.after_or_equal' => 'A data final deve ser posterior ou igual à data inicial.',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'status' => false,
+                    'validacao' => true,
+                    'erros' => $validator->errors()
+                ], 422);
+            }
+
+            $filters = $data['filters'] ?? [];
+
+            // Período usado no resumo de movimento (padrão: mês corrente)
+            $dateFrom = !empty($filters['date_from'])
+                ? \Carbon\Carbon::parse($filters['date_from'])->startOfDay()
+                : now()->startOfMonth();
+            $dateTo = !empty($filters['date_to'])
+                ? \Carbon\Carbon::parse($filters['date_to'])->endOfDay()
+                : now()->endOfDay();
+
+            // Estoque restrito a produtos de grupos controlados
+            $query = \App\Models\Estoque::with([
+                'produto:id,nome,codigo_simpas,codigo_barras,grupo_produto_id,lista_portaria,unidade_medida_id',
+                'produto.grupoProduto:id,nome,tipo,controlado',
+                'produto.unidadeMedida:id,nome',
+                'setor:id,polo_id,nome,tipo',
+                'setor.polo:id,nome'
+            ])->whereHas('produto.grupoProduto', function ($q) {
+                $q->where('controlado', true);
+            });
+
+            // Restringir aos setores que o usuário autenticado tem acesso.
+            // Super admin enxerga todos os setores (sem restrição).
+            $user = auth()->user();
+            if (!$user->isSuperAdmin()) {
+                $setoresPermitidos = DB::table('usuario_setor')
+                    ->where('usuario_id', $user->id)
+                    ->pluck('setor_id');
+                $query->whereIn('estoque.setor_id', $setoresPermitidos);
+            }
+
+            if (!empty($filters['polo_id'])) {
+                $query->whereHas('setor', function ($q) use ($filters) {
+                    $q->where('polo_id', $filters['polo_id']);
+                });
+            }
+
+            if (!empty($filters['setor_id'])) {
+                $query->where('estoque.setor_id', $filters['setor_id']);
+            }
+
+            if (!empty($filters['produto_id'])) {
+                $query->where('estoque.produto_id', $filters['produto_id']);
+            }
+
+            if (!empty($filters['grupo_produto_id'])) {
+                $query->whereHas('produto', function ($q) use ($filters) {
+                    $q->where('grupo_produto_id', $filters['grupo_produto_id']);
+                });
+            }
+
+            if (!empty($filters['lista_portaria'])) {
+                $query->whereHas('produto', function ($q) use ($filters) {
+                    $q->where('lista_portaria', strtoupper($filters['lista_portaria']));
+                });
+            }
+
+            if (!empty($filters['somente_com_saldo'])) {
+                $query->where('estoque.quantidade_atual', '>', 0);
+            }
+
+            $query->join('produtos as p', 'estoque.produto_id', '=', 'p.id')
+                  ->join('setores as s', 'estoque.setor_id', '=', 's.id')
+                  ->orderBy('p.nome', 'asc')
+                  ->orderBy('s.nome', 'asc')
+                  ->select('estoque.*');
+
+            $estoques = $query->get();
+
+            if ($estoques->isEmpty()) {
+                return response()->json([
+                    'status' => true,
+                    'message' => 'Relatório de medicamentos controlados recuperado com sucesso',
+                    'data' => [],
+                    'periodo' => [
+                        'date_from' => $dateFrom->format('Y-m-d'),
+                        'date_to' => $dateTo->format('Y-m-d'),
+                    ],
+                    'totalizadores' => [
+                        'total_itens' => 0,
+                        'total_produtos' => 0,
+                        'total_setores' => 0,
+                        'quantidade_total' => 0,
+                        'total_abaixo_minimo' => 0,
+                        'total_lotes_vencidos' => 0,
+                        'total_lotes_a_vencer' => 0,
+                        'total_entradas_periodo' => 0,
+                        'total_saidas_periodo' => 0,
+                        'por_lista' => [],
+                    ]
+                ], 200);
+            }
+
+            $produtoIds = $estoques->pluck('produto_id')->unique()->values();
+            $setorIds = $estoques->pluck('setor_id')->unique()->values();
+
+            // Lotes disponíveis por produto/setor (uma única consulta)
+            $lotesPorChave = \App\Models\EstoqueLote::whereIn('produto_id', $produtoIds)
+                ->whereIn('setor_id', $setorIds)
+                ->where('quantidade_disponivel', '>', 0)
+                ->orderBy('data_vencimento', 'asc')
+                ->get()
+                ->groupBy(function ($lote) {
+                    return $lote->setor_id . '-' . $lote->produto_id;
+                });
+
+            // Entradas do período por produto/setor
+            $entradasPorChave = DB::table('itens_entrada')
+                ->join('entrada', 'itens_entrada.entrada_id', '=', 'entrada.id')
+                ->whereIn('itens_entrada.produto_id', $produtoIds)
+                ->whereIn('entrada.setor_id', $setorIds)
+                ->whereBetween('itens_entrada.created_at', [$dateFrom, $dateTo])
+                ->groupBy('entrada.setor_id', 'itens_entrada.produto_id')
+                ->select(
+                    'entrada.setor_id',
+                    'itens_entrada.produto_id',
+                    DB::raw('SUM(itens_entrada.quantidade) as total')
+                )
+                ->get()
+                ->keyBy(function ($row) {
+                    return $row->setor_id . '-' . $row->produto_id;
+                });
+
+            // Saídas/transferências aprovadas do período por produto/setor de origem
+            $saidasPorChave = DB::table('item_movimentacao')
+                ->join('movimentacao', 'item_movimentacao.movimentacao_id', '=', 'movimentacao.id')
+                ->whereIn('item_movimentacao.produto_id', $produtoIds)
+                ->whereIn('movimentacao.setor_origem_id', $setorIds)
+                ->whereIn('movimentacao.tipo', ['S', 'T'])
+                ->where('movimentacao.status_solicitacao', 'A')
+                ->whereBetween('movimentacao.data_hora', [$dateFrom, $dateTo])
+                ->groupBy('movimentacao.setor_origem_id', 'item_movimentacao.produto_id')
+                ->select(
+                    'movimentacao.setor_origem_id as setor_id',
+                    'item_movimentacao.produto_id',
+                    DB::raw('SUM(item_movimentacao.quantidade_liberada) as total')
+                )
+                ->get()
+                ->keyBy(function ($row) {
+                    return $row->setor_id . '-' . $row->produto_id;
+                });
+
+            $totalLotesVencidos = 0;
+            $totalLotesAVencer = 0;
+            $totalEntradas = 0;
+            $totalSaidas = 0;
+            $porLista = [];
+
+            $items = $estoques->map(function ($estoque) use (
+                $lotesPorChave, $entradasPorChave, $saidasPorChave,
+                &$totalLotesVencidos, &$totalLotesAVencer, &$totalEntradas, &$totalSaidas, &$porLista
+            ) {
+                $chave = $estoque->setor_id . '-' . $estoque->produto_id;
+                $lotes = $lotesPorChave->get($chave, collect());
+
+                $lotesFormatados = $lotes->map(function ($lote) use (&$totalLotesVencidos, &$totalLotesAVencer) {
+                    $vencido = $lote->data_vencimento < now();
+                    $diasParaVencer = (int) now()->diffInDays($lote->data_vencimento, false);
+
+                    if ($vencido) {
+                        $totalLotesVencidos++;
+                    } elseif ($diasParaVencer <= 30) {
+                        $totalLotesAVencer++;
+                    }
+
+                    return [
+                        'id' => $lote->id,
+                        'lote' => $lote->lote,
+                        'quantidade_disponivel' => (int) $lote->quantidade_disponivel,
+                        'data_fabricacao' => $lote->data_fabricacao ? $lote->data_fabricacao->format('Y-m-d') : null,
+                        'data_vencimento' => $lote->data_vencimento->format('Y-m-d'),
+                        'dias_para_vencer' => $diasParaVencer,
+                        'vencido' => $vencido,
+                    ];
+                })->values();
+
+                $entradas = (int) (optional($entradasPorChave->get($chave))->total ?? 0);
+                $saidas = (int) (optional($saidasPorChave->get($chave))->total ?? 0);
+                $totalEntradas += $entradas;
+                $totalSaidas += $saidas;
+
+                $lista = $estoque->produto->lista_portaria ?: 'Sem lista';
+                $porLista[$lista] = ($porLista[$lista] ?? 0) + (int) $estoque->quantidade_atual;
+
+                $estoque->lista_portaria = $estoque->produto->lista_portaria;
+                $estoque->abaixo_minimo = $estoque->quantidade_atual < $estoque->quantidade_minima;
+                $estoque->lotes_info = [
+                    'total_lotes' => $lotesFormatados->count(),
+                    'quantidade_total_lotes' => (int) $lotes->sum('quantidade_disponivel'),
+                    'lotes' => $lotesFormatados,
+                ];
+                $estoque->movimento_periodo = [
+                    'entradas' => $entradas,
+                    'saidas' => $saidas,
+                    'saldo_movimento' => $entradas - $saidas,
+                ];
+
+                return $estoque;
+            });
+
+            ksort($porLista);
+
+            $totalizadores = [
+                'total_itens' => $items->count(),
+                'total_produtos' => $produtoIds->count(),
+                'total_setores' => $setorIds->count(),
+                'quantidade_total' => (int) $items->sum('quantidade_atual'),
+                'total_abaixo_minimo' => $items->where('abaixo_minimo', true)->count(),
+                'total_lotes_vencidos' => $totalLotesVencidos,
+                'total_lotes_a_vencer' => $totalLotesAVencer,
+                'total_entradas_periodo' => $totalEntradas,
+                'total_saidas_periodo' => $totalSaidas,
+                'por_lista' => $porLista,
+            ];
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Relatório de medicamentos controlados recuperado com sucesso',
+                'data' => $items,
+                'periodo' => [
+                    'date_from' => $dateFrom->format('Y-m-d'),
+                    'date_to' => $dateTo->format('Y-m-d'),
+                ],
+                'totalizadores' => $totalizadores
+            ], 200);
+
+        } catch (\Exception $e) {
+            Log::error('Erro ao gerar relatório de medicamentos controlados: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Erro ao gerar relatório de medicamentos controlados'
             ], 500);
         }
     }

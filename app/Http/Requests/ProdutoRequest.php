@@ -7,6 +7,13 @@ use Illuminate\Validation\Rule;
 
 class ProdutoRequest extends BaseFormRequest
 {
+    /** Listas da Portaria SVS/MS 344/98 */
+    public const LISTAS_PORTARIA = [
+        'A1', 'A2', 'A3', 'B1', 'B2',
+        'C1', 'C2', 'C3', 'C4', 'C5',
+        'D1', 'D2', 'E', 'F',
+    ];
+
     public function rules()
     {
         $produto = $this->input('produto', []);
@@ -46,9 +53,36 @@ class ProdutoRequest extends BaseFormRequest
                 'unique:produtos,codigo_barras,' . $id,
             ],
             'produto.grupo_produto_id' => 'required|exists:grupo_produto,id',
+            'produto.lista_portaria' => 'nullable|in:' . implode(',', self::LISTAS_PORTARIA),
             'produto.unidade_medida_id' => 'required|exists:unidade_medida,id',
             'produto.status' => 'nullable|in:A,I'
         ];
+    }
+
+    /**
+     * A lista da Portaria 344/98 é obrigatória quando o grupo do produto
+     * está marcado como grupo de medicamentos controlados.
+     *
+     * Fica em withValidator porque a regra `nullable` interrompe as demais
+     * regras do campo quando ele vem vazio.
+     */
+    public function withValidator($validator)
+    {
+        $validator->after(function ($validator) {
+            $produto = $this->input('produto', []);
+            $grupoId = $produto['grupo_produto_id'] ?? null;
+
+            if (!$grupoId || !empty($produto['lista_portaria'])) {
+                return;
+            }
+
+            if (\App\Models\GrupoProduto::where('id', $grupoId)->value('controlado')) {
+                $validator->errors()->add(
+                    'produto.lista_portaria',
+                    'Informe a lista da Portaria 344/98 para medicamentos controlados.'
+                );
+            }
+        });
     }
 
     public function messages()
@@ -71,7 +105,8 @@ class ProdutoRequest extends BaseFormRequest
             'produto.codigo_barras.regex' => 'O código de barras deve conter apenas números.',
             'produto.grupo_produto_id.exists' => 'Grupo de produto não encontrado.',
             'produto.unidade_medida_id.exists' => 'Unidade de medida não encontrada.',
-            'produto.status.in' => 'Status deve ser A (Ativo) ou I (Inativo).'
+            'produto.status.in' => 'Status deve ser A (Ativo) ou I (Inativo).',
+            'produto.lista_portaria.in' => 'Lista da Portaria 344/98 invalida.'
         ];
     }
 
@@ -84,7 +119,8 @@ class ProdutoRequest extends BaseFormRequest
             'produto.codigo_barras' => 'Código de Barras',
             'produto.grupo_produto_id' => 'Grupo',
             'produto.unidade_medida_id' => 'Unidade de Medida',
-            'produto.status' => 'Status'
+            'produto.status' => 'Status',
+            'produto.lista_portaria' => 'Lista da Portaria 344/98'
         ];
     }
 }
