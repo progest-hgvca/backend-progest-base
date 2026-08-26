@@ -42,12 +42,17 @@ O Laravel e seus pacotes de Excel exigem extensões que vêm desativadas por pad
    php artisan key:generate
    php artisan migrate
    ```
-7. **Povoar o Banco (Opcional):** Você possui 2 opções de carga de dados iniciais:
-   - **Opção A (Banco Limpo):** Se for iniciar a Produção e precisa de um banco vazio (apenas com o 1º Administrador logável):
+7. **Povoar o Banco (Opcional):** Você possui 3 opções de carga de dados:
+   - **Opção A (Banco de Produção/Entrega):** Importa o catálogo real de produtos do Excel, cria os 63 setores e o usuário `adminti@gmail.com`. Deixa tudo zerado de movimentações.
      ```bash
      php artisan migrate:fresh --seed
      ```
-   - **Opção B (Banco Completo/Desenvolvimento):** Se quiser popular a base com centenas de registros fake (Polos, Produtos, Fornecedores e Estoque) para ver o painel cheio:
+   - **Opção B (Modo Demonstração):** Cria apenas 13 setores essenciais e dados fakes de relatórios, estoques e movimentações rápidos para apresentação ágil do sistema.
+     ```bash
+     php artisan migrate:fresh
+     php artisan db:seed --class=DemoSystemSeeder
+     ```
+   - **Opção C (Testes Extremos):** Importa o Excel completo (com algoritmo de classificação inteligente de grupos), os 63 setores oficiais e gera milhares de movimentações fakes para simular carga pesada.
      ```bash
      php artisan migrate:fresh
      php artisan db:seed --class=FullSystemSeeder
@@ -90,14 +95,17 @@ Ideal para simular o ambiente de produção com domínios reais e Proxy Reverso.
    docker compose -f docker-compose.local.yml up -d --build
    ```
 6.  **Prepare o Banco:**
-   *Opção A: Criar banco limpo para Produção (apenas o admin):*
+   *Opção A: Criar banco oficial para Produção (produtos reais do excel, setores e o adminti):*
    ```bash
    docker compose -f docker-compose.local.yml exec progest-api php artisan migrate:fresh --seed
    ```
-   *Opção B: Criar banco com base fake completa (para desenvolvimento/testes):*
+   *Opção B: Criar banco Demo (apresentações rápidas com dados fakes reduzidos):*
    ```bash
-   docker compose -f docker-compose.local.yml exec progest-api php artisan migrate:fresh
-   docker compose -f docker-compose.local.yml exec progest-api php artisan db:seed --class=FullSystemSeeder
+   docker compose -f docker-compose.local.yml exec progest-api sh -c "php artisan migrate:fresh && php artisan db:seed --class=DemoSystemSeeder"
+   ```
+   *Opção C: Criar banco Full (Catálogo excel completo + 63 setores + muitos dados fakes para teste de carga):*
+   ```bash
+   docker compose -f docker-compose.local.yml exec progest-api sh -c "php artisan migrate:fresh && php artisan db:seed --class=FullSystemSeeder"
    ```
 
 -----
