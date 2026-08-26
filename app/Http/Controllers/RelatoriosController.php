@@ -1142,7 +1142,7 @@ class RelatoriosController extends Controller
                 'RegimeContratacao:id,nome,descricao,status',
                 'setores:id,nome,tipo,polo_id',
                 'setores.polo:id,nome'
-            ]);
+            ])->where('email', '!=', 'adminti@gmail.com');
 
             // Aplicar filtros se fornecidos
             $filters = $data['filters'] ?? [];
@@ -1231,8 +1231,8 @@ class RelatoriosController extends Controller
             // Calcular totalizadores
             $totalizadores = [
                 'total_usuarios' => $users->count(),
-                'total_ativos' => \App\Models\User::where('status', 'A')->count(),
-                'total_inativos' => \App\Models\User::where('status', 'I')->count(),
+                'total_ativos' => \App\Models\User::where('status', 'A')->where('email', '!=', 'adminti@gmail.com')->count(),
+                'total_inativos' => \App\Models\User::where('status', 'I')->where('email', '!=', 'adminti@gmail.com')->count(),
             ];
 
             return response()->json([

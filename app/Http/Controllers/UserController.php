@@ -59,6 +59,14 @@ class UserController extends Controller
             return response()->json(['status' => false, 'message' => 'Usuário não encontrado.'], 404);
         }
 
+        // Não permite que ninguém edite o adminti exceto ele mesmo (se necessário)
+        if ($user->email === 'adminti@gmail.com') {
+            $currentUser = \Illuminate\Support\Facades\Auth::user();
+            if (!$currentUser || $currentUser->email !== 'adminti@gmail.com') {
+                return response()->json(['status' => false, 'message' => 'O super admin não pode ser alterado por outros usuários.'], 403);
+            }
+        }
+
         DB::beginTransaction();
         try {
             $user->name            = mb_strtoupper($dadosValidados['name']);
@@ -93,7 +101,7 @@ class UserController extends Controller
 
     public function listAll(Request $request)
     {
-        $query = User::query();
+        $query = User::query()->where('email', '!=', 'adminti@gmail.com');
 
         // Busca textual multi-campo (name, email, cpf, telefone)
         $search = $request->input('search');
@@ -175,8 +183,8 @@ class UserController extends Controller
         if (!$user) {
             return response()->json(['status' => false, 'message' => 'Usuário não encontrado.'], 404);
         }
-        if ($user->email === 'admin@admin.com') {
-            return response()->json(['status' => false, 'message' => 'O usuário Admin não pode ser alterado.'], 403);
+        if ($user->email === 'adminti@gmail.com') {
+            return response()->json(['status' => false, 'message' => 'O usuário super admin não pode ser desativado.'], 403);
         }
 
         // Toggle: se ativo → inativa, se inativo → ativa
@@ -189,7 +197,7 @@ class UserController extends Controller
 
     public function countUsers()
     {
-        $total = User::where('status', 'A')->count();
+        $total = User::where('status', 'A')->where('email', '!=', 'adminti@gmail.com')->count();
         return response()->json(['count' => $total]);
     }
 
@@ -232,9 +240,21 @@ class UserController extends Controller
         }
 
         if (!empty($dadosSync)) {
-            $idsValidos     = Setores::whereIn('id', array_keys($dadosSync))->pluck('id')->toArray();
+            $idsValidos = Setores::whereIn('id', array_keys($dadosSync))->get();
             $dadosFiltrados = [];
-            foreach ($idsValidos as $idValido) {
+            
+            $currentUser = \Illuminate\Support\Facades\Auth::user();
+            $isSuperAdmin = $currentUser ? $currentUser->isSuperAdmin() : false;
+
+            foreach ($idsValidos as $setorValido) {
+                $idValido = $setorValido->id;
+                $perfilDesejado = $dadosSync[$idValido]['perfil'];
+                
+                // Regra: Apenas super admin pode dar permissão de "admin" na CAF
+                if ($perfilDesejado === 'admin' && $setorValido->tipo === 'CAF' && !$isSuperAdmin) {
+                    throw new \Exception("Apenas o Super Admin pode conceder perfil de Administrador na CAF.");
+                }
+
                 $dadosFiltrados[$idValido] = $dadosSync[$idValido];
             }
             $user->setores()->sync($dadosFiltrados);

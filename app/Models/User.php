@@ -87,6 +87,6 @@ class User extends Authenticatable
      */
     public function isSuperAdmin(): bool
     {
-        return isset($this->email) && mb_strtolower($this->email) === 'admin@admin.com';
+        return isset($this->email) && mb_strtolower($this->email) === 'adminti@gmail.com';
     }
 }
