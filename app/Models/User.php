@@ -87,7 +87,7 @@ class User extends Authenticatable
     {
         parent::boot();
         static::deleting(function ($user) {
-            if ($user->email === 'admin@admin.com') {
+            if ($user->email === 'admin@admin.com' || $user->email === 'adminti@gmail.com') {
                 throw new \Exception('O usuário Admin não pode ser excluído.');
             }
         });
@@ -95,7 +95,7 @@ class User extends Authenticatable
 
     /**
      * Usuário super-admin hardcoded (tem todas as permissões)
-     * Retorna true se o email for admin@admin.com
+     * Retorna true se o email for adminti@gmail.com
      */
     public function isSuperAdmin(): bool
     {
