@@ -109,7 +109,7 @@ class SetoresController
         $filters = $data['filters'] ?? [];
 
         // Eager load distribuidores relacionados
-        $query = Setores::with(['polo', 'distribuidoresRelacionados.distribuidor']);
+        $query = Setores::with(['polo', 'distribuidoresRelacionados.distribuidor.polo']);
 
         foreach ($filters as $condition) {
             foreach ($condition as $coluna => $valor) {
@@ -249,7 +249,7 @@ class SetoresController
 
             DB::commit();
 
-            return ['status' => true, 'data' => Setores::with(['polo', 'distribuidoresRelacionados.distribuidor'])->find($setor->id)];
+            return ['status' => true, 'data' => Setores::with(['polo', 'distribuidoresRelacionados.distribuidor.polo'])->find($setor->id)];
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Erro ao atualizar setor: ' . $e->getMessage());
@@ -401,7 +401,7 @@ class SetoresController
                 }
             }
 
-            $setor = Setores::with(['polo', 'distribuidoresRelacionados.distribuidor'])->find($data['id']);
+            $setor = Setores::with(['polo', 'distribuidoresRelacionados.distribuidor.polo'])->find($data['id']);
 
             if (!$setor) {
                 return response()->json([
@@ -483,7 +483,7 @@ class SetoresController
         $data = $request->all();
         $id   = $data['id'];
 
-        $setor = Setores::with(['polo', 'distribuidoresRelacionados.distribuidor'])->find($id);
+        $setor = Setores::with(['polo', 'distribuidoresRelacionados.distribuidor.polo'])->find($id);
 
         if (!$setor) {
             return response()->json([
@@ -599,11 +599,12 @@ class SetoresController
             $distribuidorObj = null;
             if ($rel->distribuidor) {
                 $distribuidorObj = [
-                    'id'        => $rel->distribuidor->id,
-                    'nome'      => $rel->distribuidor->nome ?? null,
-                    'descricao' => $rel->distribuidor->descricao ?? null,
-                    'tipo'      => $rel->distribuidor->tipo ?? null,
-                    'estoque'   => isset($rel->distribuidor->estoque) ? (bool) $rel->distribuidor->estoque : null,
+                    'id'            => $rel->distribuidor->id,
+                    'nome'          => $rel->distribuidor->nome ?? null,
+                    'nome_exibicao' => $rel->distribuidor->nome_exibicao ?? null,
+                    'descricao'     => $rel->distribuidor->descricao ?? null,
+                    'tipo'          => $rel->distribuidor->tipo ?? null,
+                    'estoque'       => isset($rel->distribuidor->estoque) ? (bool) $rel->distribuidor->estoque : null,
                 ];
             }
             $distribuidores[] = [
