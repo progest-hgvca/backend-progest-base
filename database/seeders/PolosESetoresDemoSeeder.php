@@ -6,7 +6,7 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
-class PolosESetoresSeeder extends Seeder
+class PolosESetoresDemoSeeder extends Seeder
 {
     /**
      * Run the database seeds.
@@ -61,126 +61,36 @@ class PolosESetoresSeeder extends Seeder
         }
 
         // Helper para montar array de setor
-        $s = fn($polo_id, $nome, $estoque) => [
+        $s = fn($polo_id, $nome, $estoque, $tipo = 'Ambos') => [
             'polo_id' => $polo_id,
             'nome'    => $nome,
             'estoque' => $estoque,
             'status'  => 'A',
-            'tipo'    => 'Medicamento',
+            'tipo'    => $tipo,
         ];
 
         $setores = [
-            // =================================================================
-            // HGVC — COM ESTOQUE (3 setores)
-            // =================================================================
+            // HGVC — COM ESTOQUE
             $s($hgvc->id, 'CENTRAL DE ABASTECIMENTO FARMACÊUTICO (CAF)', true),
             $s($hgvc->id, 'FARMÁCIA DE DISPENSAÇÃO',                     true),
-            $s($hgvc->id, 'SATÉLITE DA EMERGÊNCIA',                      true),
+            
+            // HGVC — SEM ESTOQUE: Assistenciais/Clínicas/UTIs
+            $s($hgvc->id, 'CENTRO CIRÚRGICO', false, 'Ambos'),
+            $s($hgvc->id, 'CLÍNICA MÉDICA',   false, 'Ambos'),
+            $s($hgvc->id, 'UTI 1',            false, 'Ambos'),
+            $s($hgvc->id, 'SALA VERMELHA',    false, 'Ambos'),
 
-            // =================================================================
-            // HGVC — SEM ESTOQUE: Centro Cirúrgico (1)
-            // =================================================================
-            $s($hgvc->id, 'CENTRO CIRÚRGICO', false),
+            // HGVC — SEM ESTOQUE: Administrativos
+            $s($hgvc->id, 'RECEPÇÃO',         false, 'Material'),
+            $s($hgvc->id, 'RH',               false, 'Material'),
+            $s($hgvc->id, 'ALMOXARIFADO',     false, 'Material'),
 
-            // =================================================================
-            // HGVC — SEM ESTOQUE: Clínicas (3)
-            // =================================================================
-            $s($hgvc->id, 'CLÍNICA MÉDICA',    false),
-            $s($hgvc->id, 'CLÍNICA CIRÚRGICA', false),
-            $s($hgvc->id, 'PEDIATRIA',         false),
-
-            // =================================================================
-            // HGVC — SEM ESTOQUE: UTIs (8)
-            // P2 — Verificar se devem ter estoque para soluções padrão
-            // =================================================================
-            $s($hgvc->id, 'UTI 1',     false),
-            $s($hgvc->id, 'UTI 2',     false),
-            $s($hgvc->id, 'UTI 3A',    false),
-            $s($hgvc->id, 'UTI 3B',    false),
-            $s($hgvc->id, 'UTI 4',     false),
-            $s($hgvc->id, 'UTI PED1',  false),
-            $s($hgvc->id, 'UTI PED 2', false),
-            $s($hgvc->id, 'UTI NEO',   false),
-
-            // =================================================================
-            // HGVC — SEM ESTOQUE: Salas de Emergência (5)
-            // P1 — Solicitam soros da CAF — mecanismo de implementação pendente
-            // =================================================================
-            $s($hgvc->id, 'SALA VERMELHA',       false),
-            $s($hgvc->id, 'SALA DE TRAUMA',       false),
-            $s($hgvc->id, 'OBSERVAÇÃO MASCULINA', false),
-            $s($hgvc->id, 'OBSERVAÇÃO FEMININA',  false),
-            $s($hgvc->id, 'SALA DE MEDICAÇÃO',    false),
-
-            // =================================================================
-            // HGVC — SEM ESTOQUE: Setores Administrativos (27)
-            // =================================================================
-            $s($hgvc->id, 'DIRETORIAS',                 false),
-            $s($hgvc->id, 'OUVIDORIA',                  false),
-            $s($hgvc->id, 'TRANSPORTE',                 false),
-            $s($hgvc->id, 'MANUTENÇÃO PREDIAL',         false),
-            $s($hgvc->id, 'MANUTENÇÃO DE EQUIPAMENTOS', false),
-            $s($hgvc->id, 'CME',                        false),
-            $s($hgvc->id, 'NUTRIÇÃO',                   false),
-            $s($hgvc->id, 'NEP',                        false),
-            $s($hgvc->id, 'LABORATÓRIO',                false),
-            $s($hgvc->id, 'RECEPÇÃO',                   false),
-            $s($hgvc->id, 'RH',                         false),
-            $s($hgvc->id, 'COMPRAS',                    false),
-            $s($hgvc->id, 'FINANCEIRO',                 false),
-            $s($hgvc->id, 'CPL',                        false),
-            $s($hgvc->id, 'CONTRATOS',                  false),
-            $s($hgvc->id, 'SAME',                       false),
-            $s($hgvc->id, 'SERVIÇO SOCIAL',             false),
-            $s($hgvc->id, 'NIR',                        false),
-            $s($hgvc->id, 'AGÊNCIA TRANSFUSIONAL',      false),
-            $s($hgvc->id, 'ULTRASSOM',                  false),
-            $s($hgvc->id, 'CIHDOTT',                    false),
-            $s($hgvc->id, 'VIGILÂNCIA EPIDEMIOLÓGICA',  false),
-            $s($hgvc->id, 'CCIH',                       false),
-            $s($hgvc->id, 'SIAST',                      false),
-            $s($hgvc->id, 'TI',                         false),
-            $s($hgvc->id, 'PATRIMÔNIO',                 false),
-            $s($hgvc->id, 'ALMOXARIFADO',               false),
-
-            // =================================================================
-            // HGVC — SEM ESTOQUE: Setores Assistenciais (3)
-            // =================================================================
-            $s($hgvc->id, 'CHD',                   false),
-            $s($hgvc->id, 'AMBULATÓRIO DE GASTRO', false),
-            $s($hgvc->id, 'UNACON',                false),
-
-            // =================================================================
-            // HAP — COM ESTOQUE (2 setores)
-            // =================================================================
+            // HAP (Apenas para ter outro polo)
             $s($hap->id, 'FARMÁCIA CENTRAL',  true),
-            $s($hap->id, 'FARMÁCIA SATÉLITE', true),
+            $s($hap->id, 'UTI 5',             false, 'Ambos'),
+            $s($hap->id, 'COORDENAÇÃO',       false, 'Material'),
 
-            // =================================================================
-            // HAP — SEM ESTOQUE (7 setores)
-            // =================================================================
-            $s($hap->id, 'UTI 5',       false),
-            $s($hap->id, 'UTI 6A',      false),
-            $s($hap->id, 'UTI 6B',      false),
-            $s($hap->id, 'INTERNAÇÃO',  false),
-            $s($hap->id, 'AMBULATÓRIO', false),
-            $s($hap->id, 'RECEPÇÃO',    false),
-            $s($hap->id, 'COORDENAÇÃO', false),
-
-            // =================================================================
-            // HCS — COM ESTOQUE (1 setor)
-            // =================================================================
-            $s($hcs->id, 'FARMÁCIA', true),
-
-            // =================================================================
-            // HCS — SEM ESTOQUE (2 setores)
-            // =================================================================
-            $s($hcs->id, 'CLÍNICA MÉDICA',       false),
-            $s($hcs->id, 'CLÍNICA PSIQUIÁTRICA', false),
-
-            // =================================================================
-            // UPA — COM ESTOQUE (1 setor)
-            // =================================================================
+            // UPA
             $s($upa->id, 'FARMÁCIA', true),
         ];
 
