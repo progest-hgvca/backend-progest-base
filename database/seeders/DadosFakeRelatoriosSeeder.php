@@ -199,8 +199,23 @@ class DadosFakeRelatoriosSeeder extends Seeder
         $setorDestino = array_values($setoresDistribuidores)[0];
         $usuario      = $this->usuarios[array_rand($this->usuarios)];
         
-        $produtosDisponiveis = array_filter($this->produtos, fn($p) => $p->grupoProduto && $p->grupoProduto->tipo === $setorDestino->tipo);
-        if (empty($produtosDisponiveis)) return;
+        // Em vez de pegar qualquer produto, pegar um que efetivamente tenha estoque no distribuidor!
+        $estoqueDestino = Estoque::where('setor_id', $setorDestino->id)
+            ->where('quantidade_atual', '>=', 50)
+            ->first();
+
+        // Se não achar nenhum com saldo, usa qualquer um (e o seeder terá que criar saldo para ele)
+        $produto_id = $estoqueDestino ? $estoqueDestino->produto_id : $this->produtos[array_rand($this->produtos)]->id;
+
+        // Se não tinha estoque suficiente, força a criação do saldo para evitar o erro de trigger negativo
+        if (!$estoqueDestino) {
+            $estoqueDestino = Estoque::firstOrCreate(
+                ['setor_id' => $setorDestino->id, 'produto_id' => $produto_id],
+                ['quantidade_minima' => 10, 'status_disponibilidade' => 'D']
+            );
+            $estoqueDestino->quantidade_atual = 100;
+            $estoqueDestino->save();
+        }
 
         $cenarios = [
             ['status' => 'P', 'obs' => 'Movimentação Pendente (Aguardando Distribuidor)', 'liberada' => null],
@@ -226,7 +241,6 @@ class DadosFakeRelatoriosSeeder extends Seeder
                 'updated_at'          => $dataMov,
             ]);
 
-            $produto = $produtosDisponiveis[array_rand($produtosDisponiveis)];
             $qtdSolicitada = rand(10, 30);
             $qtdLiberada = 0;
 
@@ -235,15 +249,31 @@ class DadosFakeRelatoriosSeeder extends Seeder
 
             ItemMovimentacao::create([
                 'movimentacao_id'       => $movimentacao->id,
-                'produto_id'            => $produto->id,
+                'produto_id'            => $produto_id,
                 'quantidade_solicitada' => $qtdSolicitada,
                 'quantidade_liberada'   => $qtdLiberada,
                 'lote'                  => $cenario['liberada'] && $qtdLiberada > 0 ? 'L' . date('Y') . '-' . str_pad(rand(1, 999), 3, '0', STR_PAD_LEFT) : null,
                 'created_at'            => $dataMov,
                 'updated_at'            => $dataMov,
             ]);
+
+            // REGRA DE NEGÓCIO FALTANTE: Se aprovado, abater do destino e somar na origem
+            if ($qtdLiberada > 0) {
+                // Abater do distribuidor (setor destino da solicitação)
+                $estoqueDestino->quantidade_atual -= $qtdLiberada;
+                $estoqueDestino->save();
+
+                // Somar no consumidor (setor origem da solicitação)
+                $estoqueOrigem = Estoque::firstOrCreate(
+                    ['setor_id' => $setorOrigem->id, 'produto_id' => $produto_id],
+                    ['quantidade_minima' => 5, 'quantidade_atual' => 0, 'status_disponibilidade' => 'I']
+                );
+                $estoqueOrigem->quantidade_atual += $qtdLiberada;
+                $estoqueOrigem->status_disponibilidade = 'D';
+                $estoqueOrigem->save();
+            }
         }
 
-        $this->command->info("  ✓ 6 cenários de movimentação criados.");
+        $this->command->info("  ✓ 6 cenários de movimentação criados com atualização de saldo real.");
     }
 }
