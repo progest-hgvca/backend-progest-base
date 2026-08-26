@@ -28,6 +28,14 @@ class SetoresController
             ], 422);
         }
 
+        $user = Auth::user();
+        if (!$user) return response()->json(['status' => false, 'message' => 'Não autenticado'], 401);
+
+        $poloId = $setoresData['polo_id'] ?? null;
+        if (!$user->isSuperAdmin() && !$user->isAdminCaf() && (!$poloId || !$user->isAdminPolo($poloId))) {
+            return response()->json(['status' => false, 'message' => 'Apenas admins da CAF ou do Polo podem criar setores.'], 403);
+        }
+
         $validator = Validator::make($setoresData, [
             'polo_id'       => 'required|exists:polos,id',
             'nome'          => 'required|string|max:255',
@@ -113,11 +121,24 @@ class SetoresController
         // Eager load distribuidores relacionados
         $query = Setores::with(['polo', 'distribuidoresRelacionados.distribuidor.polo']);
 
-        if ($user && !$user->isSuperAdmin()) {
+        if ($user && !$user->isSuperAdmin() && !$user->isAdminCaf()) {
+            // Se for Admin Polo, pode ver os setores do seu polo
+            // Se for Admin Comum, vê apenas os setores que ele está na tabela usuario_setor
+            $polosAdmin = $user->polosAdministrados()->pluck('polos.id')->toArray();
+            
             $setoresPermitidos = \Illuminate\Support\Facades\DB::table('usuario_setor')
                 ->where('usuario_id', $user->id)
-                ->pluck('setor_id');
-            $query->whereIn('id', $setoresPermitidos);
+                ->pluck('setor_id')
+                ->toArray();
+                
+            $query->where(function($q) use ($polosAdmin, $setoresPermitidos) {
+                if (!empty($polosAdmin)) {
+                    $q->whereIn('polo_id', $polosAdmin)
+                      ->orWhereIn('id', $setoresPermitidos);
+                } else {
+                    $q->whereIn('id', $setoresPermitidos);
+                }
+            });
         }
 
         foreach ($filters as $condition) {
@@ -154,6 +175,14 @@ class SetoresController
                 'status' => false,
                 'message' => 'Dados do setor não informados.'
             ], 422);
+        }
+
+        $user = Auth::user();
+        if (!$user) return response()->json(['status' => false, 'message' => 'Não autenticado'], 401);
+
+        $poloId = $setoresData['polo_id'] ?? null;
+        if (!$user->isSuperAdmin() && !$user->isAdminCaf() && (!$poloId || !$user->isAdminPolo($poloId))) {
+            return response()->json(['status' => false, 'message' => 'Apenas admins da CAF ou do Polo podem editar setores.'], 403);
         }
 
         $validator = Validator::make($setoresData, [
@@ -451,8 +480,8 @@ class SetoresController
                 ], 401);
             }
 
-            // Super admin tem acesso a todos os setores
-            if ($user->isSuperAdmin()) {
+            // Super admin e Admin CAF têm acesso a todos os setores
+            if ($user->isSuperAdmin() || $user->isAdminCaf()) {
                 $setores = Setores::with(['polo'])
                     ->select('id', 'polo_id', 'nome', 'descricao', 'status', 'estoque', 'tipo')
                     ->where('status', 'A')
@@ -465,14 +494,29 @@ class SetoresController
                 ]);
             }
 
-            // Usuário comum: busca setores via tabela usuario_setor
-            $setores = Setores::with(['polo'])
+            // Usuário comum ou Admin Polo
+            $polosAdmin = $user->polosAdministrados()->pluck('polos.id')->toArray();
+            
+            $query = Setores::with(['polo'])
                 ->select('setores.id', 'setores.polo_id', 'setores.nome', 'setores.descricao', 'setores.status', 'setores.estoque', 'setores.tipo')
-                ->join('usuario_setor', 'setores.id', '=', 'usuario_setor.setor_id')
-                ->where('usuario_setor.usuario_id', $user->id)
                 ->where('setores.status', 'A')
-                ->orderBy('setores.nome')
-                ->get();
+                ->orderBy('setores.nome');
+                
+            $setoresPermitidos = \Illuminate\Support\Facades\DB::table('usuario_setor')
+                ->where('usuario_id', $user->id)
+                ->pluck('setor_id')
+                ->toArray();
+                
+            $query->where(function($q) use ($polosAdmin, $setoresPermitidos) {
+                if (!empty($polosAdmin)) {
+                    $q->whereIn('polo_id', $polosAdmin)
+                      ->orWhereIn('setores.id', $setoresPermitidos);
+                } else {
+                    $q->whereIn('setores.id', $setoresPermitidos);
+                }
+            });
+            
+            $setores = $query->distinct()->get();
 
             return response()->json([
                 'status' => true,
@@ -518,6 +562,13 @@ class SetoresController
             ], 404);
         }
 
+        $user = Auth::user();
+        if (!$user) return response()->json(['status' => false, 'message' => 'Não autenticado'], 401);
+
+        if (!$user->isSuperAdmin() && !$user->isAdminCaf() && !$user->isAdminPolo($setor->polo_id)) {
+            return response()->json(['status' => false, 'message' => 'Acesso negado para excluir setor.'], 403);
+        }
+
         // Verificar referências antes de deletar
         $referencias = $this->checkSetoresReferences($id);
         if (!empty($referencias)) {
@@ -555,6 +606,13 @@ class SetoresController
                     'status' => false,
                     'message' => 'Setor não encontrado'
                 ], 404);
+            }
+
+            $user = Auth::user();
+            if (!$user) return response()->json(['status' => false, 'message' => 'Não autenticado'], 401);
+
+            if (!$user->isSuperAdmin() && !$user->isAdminCaf() && !$user->isAdminPolo($setor->polo_id)) {
+                return response()->json(['status' => false, 'message' => 'Acesso negado para inativar setor.'], 403);
             }
 
             // Toggle: A -> I ou I -> A

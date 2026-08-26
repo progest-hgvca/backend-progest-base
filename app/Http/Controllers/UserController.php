@@ -245,14 +245,31 @@ class UserController extends Controller
             
             $currentUser = \Illuminate\Support\Facades\Auth::user();
             $isSuperAdmin = $currentUser ? $currentUser->isSuperAdmin() : false;
+            $isAdminCaf   = $currentUser ? $currentUser->isAdminCaf() : false;
+            
+            $polosAdmin = $currentUser ? $currentUser->polosAdministrados->pluck('id')->toArray() : [];
+            $setoresAdmin = $currentUser ? $currentUser->setores()->wherePivot('perfil', 'admin')->pluck('setores.id')->toArray() : [];
 
             foreach ($idsValidos as $setorValido) {
                 $idValido = $setorValido->id;
                 $perfilDesejado = $dadosSync[$idValido]['perfil'];
                 
-                // Regra: Apenas super admin pode dar permissão de "admin" na CAF
-                if ($perfilDesejado === 'admin' && $setorValido->tipo === 'CAF' && !$isSuperAdmin) {
-                    throw new \Exception("Apenas o Super Admin pode conceder perfil de Administrador na CAF.");
+                // Super Admin e Admin CAF têm poder total.
+                if (!$isSuperAdmin && !$isAdminCaf) {
+                    $isAdminPoloDesseSetor = in_array($setorValido->polo_id, $polosAdmin);
+                    $isAdminDesseSetor = in_array($idValido, $setoresAdmin);
+                    
+                    if (!$isAdminPoloDesseSetor && !$isAdminDesseSetor) {
+                        throw new \Exception("Você não tem permissão para vincular usuários ao setor: " . $setorValido->nome);
+                    }
+
+                    if ($perfilDesejado === 'admin') {
+                        throw new \Exception("Apenas o Admin da CAF ou o Super Admin podem conceder o perfil de Administrador.");
+                    }
+                }
+
+                if ($perfilDesejado === 'almoxarife' && !$setorValido->estoque) {
+                    throw new \Exception("O perfil de almoxarife só pode ser concedido a setores com estoque.");
                 }
 
                 $dadosFiltrados[$idValido] = $dadosSync[$idValido];
