@@ -50,16 +50,6 @@ class UsuariosEPerfisSeeder extends Seeder
                 'status'          => 'A',
                 'regime_contratacao_id' => 1,
             ],
-            [
-                'name'            => 'Farmacêutico',
-                'email'           => 'farmaceutico@gmail.com',
-                'password'        => Hash::make('Admin123'),
-                'cpf'             => '44444444444',
-                'telefone'        => '00000000000',
-                'data_nascimento' => '1990-01-01',
-                'status'          => 'A',
-                'regime_contratacao_id' => 1,
-            ],
         ];
 
         foreach ($usuarios as $dados) {
@@ -78,7 +68,6 @@ class UsuariosEPerfisSeeder extends Seeder
         $userSolicitante = DB::table('users')->where('email', 'jeansolicitante@gmail.com')->first();
         $userAlmoxarife  = DB::table('users')->where('email', 'arthuralmoxarife@gmail.com')->first();
         $userAdmin       = DB::table('users')->where('email', 'pabloadmin@gmail.com')->first();
-        $userFarma       = DB::table('users')->where('email', 'farmaceutico@gmail.com')->first();
 
         $setores = DB::table('setores')->get();
 
@@ -92,7 +81,6 @@ class UsuariosEPerfisSeeder extends Seeder
         $vinculos = [
             ['usuario_id' => $userSolicitante->id, 'perfil' => 'solicitante'],
             ['usuario_id' => $userAlmoxarife->id,  'perfil' => 'almoxarife'],
-            ['usuario_id' => $userFarma->id,       'perfil' => 'almoxarife'],
             ['usuario_id' => $userAdmin->id,       'perfil' => 'admin'],
         ];
 
