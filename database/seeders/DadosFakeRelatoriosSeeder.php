@@ -87,7 +87,7 @@ class DadosFakeRelatoriosSeeder extends Seeder
 
     private function gerarEntradas()
     {
-        $this->command->info('📥 Gerando entradas de estoque (últimos 12 meses)...');
+        $this->command->info('📥 Gerando entradas de estoque (mínimo necessário)...');
 
         $setoresComEstoque = array_filter($this->setores, fn($s) => $s->estoque);
 
@@ -96,47 +96,40 @@ class DadosFakeRelatoriosSeeder extends Seeder
             return;
         }
 
-        for ($i = 1; $i <= 150; $i++) {
+        for ($i = 1; $i <= 10; $i++) {
             $setor = $setoresComEstoque[array_rand($setoresComEstoque)];
             $fornecedor = $this->fornecedores[array_rand($this->fornecedores)];
-
-            // Datas aleatórias dos últimos 12 meses
-            $dataEntrada = Carbon::now()->subDays(rand(0, 365));
+            $dataEntrada = Carbon::now()->subDays(rand(0, 30));
 
             $entrada = Entrada::create([
-                'nota_fiscal' => 'NF-FAKE-' . date('Y', strtotime($dataEntrada)) . '-' . str_pad($i, 6, '0', STR_PAD_LEFT),
+                'nota_fiscal' => 'NF-FAKE-' . date('Y') . '-' . str_pad($i, 6, '0', STR_PAD_LEFT),
                 'setor_id' => $setor->id,
                 'fornecedor_id' => $fornecedor->id,
                 'created_at' => $dataEntrada,
                 'updated_at' => $dataEntrada,
             ]);
 
-            // Gerar de 1 a 5 itens por entrada
-            $numItens = rand(1, 5);
+            $numItens = rand(1, 3);
             $produtosCompativeis = array_filter($this->produtos, fn($p) => $p->grupoProduto && $p->grupoProduto->tipo === $setor->tipo);
 
             for ($j = 0; $j < $numItens; $j++) {
                 if (empty($produtosCompativeis)) continue;
 
                 $produto = $produtosCompativeis[array_rand($produtosCompativeis)];
-                $quantidade = rand(50, 500);
-
-                // Valor unitário aleatório entre R$ 2,50 e R$ 800,00
-                $valorUnitario = round(rand(250, 80000) / 100, 2);
+                $quantidade = rand(50, 200);
+                $valorUnitario = round(rand(250, 10000) / 100, 2);
 
                 ItensEntrada::create([
                     'entrada_id'     => $entrada->id,
                     'produto_id'     => $produto->id,
                     'quantidade'     => $quantidade,
                     'valor_unitario' => $valorUnitario,
-                    'lote'           => 'L' . date('Y', strtotime($dataEntrada)) . '-' . str_pad(rand(1, 999), 3, '0', STR_PAD_LEFT),
-                    'data_fabricacao'=> null, // opcional — não obrigatório
+                    'lote'           => 'L' . date('Y') . '-' . str_pad(rand(1, 999), 3, '0', STR_PAD_LEFT),
                     'data_vencimento'=> $dataEntrada->copy()->addMonths(rand(12, 36)),
                     'created_at'     => $dataEntrada,
                     'updated_at'     => $dataEntrada,
                 ]);
 
-                // Atualizar estoque
                 $estoque = Estoque::where('setor_id', $setor->id)
                     ->where('produto_id', $produto->id)
                     ->first();
@@ -147,11 +140,8 @@ class DadosFakeRelatoriosSeeder extends Seeder
                     $estoque->save();
                 }
             }
-
-            if ($i % 30 == 0) {
-                $this->command->info("  ✓ {$i}/150 entradas criadas");
-            }
         }
+        $this->command->info("  ✓ 10 entradas criadas");
     }
 
     private function gerarEstoqueLote()
@@ -188,11 +178,8 @@ class DadosFakeRelatoriosSeeder extends Seeder
 
     private function gerarMovimentacoes()
     {
-        $this->command->info('🔄 Gerando movimentações (últimos 12 meses)...');
+        $this->command->info('🔄 Gerando cenários de movimentações para demonstração...');
 
-        $tipos = ['T', 'S', 'D']; // T = Transferência, D = Devolução, S = Saída
-
-        // Separar distribuidores (Farmácia Central / Almoxarifado) de consumidores
         $setoresDistribuidores = array_filter($this->setores, function($s) {
             $nome = strtolower($s->nome);
             return str_contains($nome, 'farmácia central') || str_contains($nome, 'farmacia central') || str_contains($nome, 'almoxarifado');
@@ -208,49 +195,55 @@ class DadosFakeRelatoriosSeeder extends Seeder
             return;
         }
 
-        for ($i = 1; $i <= 100; $i++) {
-            // Regra: origem sempre é um setor CONSUMIDOR fazendo solicitação para um DISTRIBUIDOR
-            $setorOrigem  = $setoresConsumidores[array_rand($setoresConsumidores)];
-            $setorDestino = $setoresDistribuidores[array_rand($setoresDistribuidores)];
-            $usuario      = $this->usuarios[array_rand($this->usuarios)];
-            $tipo         = $tipos[array_rand($tipos)];
+        $setorOrigem  = array_values($setoresConsumidores)[0];
+        $setorDestino = array_values($setoresDistribuidores)[0];
+        $usuario      = $this->usuarios[array_rand($this->usuarios)];
+        
+        $produtosDisponiveis = array_filter($this->produtos, fn($p) => $p->grupoProduto && $p->grupoProduto->tipo === $setorDestino->tipo);
+        if (empty($produtosDisponiveis)) return;
 
-            // Datas aleatórias dos últimos 12 meses
-            $dataMovimentacao = Carbon::now()->subDays(rand(0, 365));
+        $cenarios = [
+            ['status' => 'P', 'obs' => 'Movimentação Pendente (Aguardando Distribuidor)', 'liberada' => null],
+            ['status' => 'A', 'obs' => 'Movimentação Aprovada (Liberação Total)', 'liberada' => 'total'],
+            ['status' => 'A', 'obs' => 'Movimentação Aprovada Parcial (Liberação Menor)', 'liberada' => 'parcial'],
+            ['status' => 'R', 'obs' => 'Movimentação Rejeitada (Recusa Integral)', 'liberada' => 'zero'],
+            ['status' => 'C', 'obs' => 'Movimentação Cancelada (Pelo Solicitante)', 'liberada' => null],
+            ['status' => 'D', 'obs' => 'Rascunho (Não enviada)', 'liberada' => null],
+        ];
+
+        foreach ($cenarios as $index => $cenario) {
+            $dataMov = Carbon::now()->subDays(6 - $index);
 
             $movimentacao = Movimentacao::create([
                 'usuario_id'          => $usuario->id,
                 'setor_origem_id'     => $setorOrigem->id,
                 'setor_destino_id'    => $setorDestino->id,
-                'tipo'                => $tipo,
-                'data_hora'           => $dataMovimentacao,
-                'status_solicitacao'  => rand(0, 10) > 2 ? 'A' : 'P', // 80% aprovadas
-                'observacao'          => 'Movimentação fake para testes - tipo ' . $tipo,
-                'created_at'          => $dataMovimentacao,
-                'updated_at'          => $dataMovimentacao,
+                'tipo'                => 'S', // Saída / Solicitação
+                'data_hora'           => $dataMov,
+                'status_solicitacao'  => $cenario['status'],
+                'observacao'          => $cenario['obs'],
+                'created_at'          => $dataMov,
+                'updated_at'          => $dataMov,
             ]);
 
-            // Gerar de 1 a 4 itens por movimentação
-            $numItens = rand(1, 4);
+            $produto = $produtosDisponiveis[array_rand($produtosDisponiveis)];
+            $qtdSolicitada = rand(10, 30);
+            $qtdLiberada = 0;
 
-            for ($j = 0; $j < $numItens; $j++) {
-                $produto             = $this->produtos[array_rand($this->produtos)];
-                $quantidadeSolicitada = rand(5, 50);
+            if ($cenario['liberada'] === 'total') $qtdLiberada = $qtdSolicitada;
+            if ($cenario['liberada'] === 'parcial') $qtdLiberada = rand(1, $qtdSolicitada - 1);
 
-                ItemMovimentacao::create([
-                    'movimentacao_id'     => $movimentacao->id,
-                    'produto_id'          => $produto->id,
-                    'quantidade_solicitada' => $quantidadeSolicitada,
-                    'quantidade_liberada' => $movimentacao->status_solicitacao === 'A' ? $quantidadeSolicitada : 0,
-                    'lote'                => 'L' . date('Y', strtotime($dataMovimentacao)) . '-' . str_pad(rand(1, 999), 3, '0', STR_PAD_LEFT),
-                    'created_at'          => $dataMovimentacao,
-                    'updated_at'          => $dataMovimentacao,
-                ]);
-            }
-
-            if ($i % 25 == 0) {
-                $this->command->info("  ✓ {$i}/100 movimentações criadas");
-            }
+            ItemMovimentacao::create([
+                'movimentacao_id'       => $movimentacao->id,
+                'produto_id'            => $produto->id,
+                'quantidade_solicitada' => $qtdSolicitada,
+                'quantidade_liberada'   => $qtdLiberada,
+                'lote'                  => $cenario['liberada'] && $qtdLiberada > 0 ? 'L' . date('Y') . '-' . str_pad(rand(1, 999), 3, '0', STR_PAD_LEFT) : null,
+                'created_at'            => $dataMov,
+                'updated_at'            => $dataMov,
+            ]);
         }
+
+        $this->command->info("  ✓ 6 cenários de movimentação criados.");
     }
 }

@@ -89,23 +89,31 @@ class ExcelProdutosSeeder extends Seeder
             }
 
             // Regras de Inferência para GRUPO
-            if (Str::contains($nome_lower, ['cloridrato', 'sulfato', 'dipirona', 'paracetamol', 'acido', 'sodio', 'potassio', 'comprimido', 'ampola', 'mg', 'ml'])) {
-                $grupo_nome = 'MEDICAMENTOS';
+            if (Str::contains($nome_lower, ['vitamina', 'acido ascorbico', 'colecalciferol', 'complexo b', 'polivitaminico'])) {
+                $grupo_nome = 'VITAMINAS E SUPLEMENTOS';
                 $grupo_tipo = 'Medicamento';
-            }
-            if (Str::contains($nome_lower, ['soro'])) {
+            } elseif (Str::contains($nome_lower, ['diazepam', 'clonazepam', 'morfina', 'tramadol', 'fenobarbital', 'midazolam'])) {
+                $grupo_nome = 'MEDICAMENTOS CONTROLADOS';
+                $grupo_tipo = 'Medicamento';
+            } elseif (Str::contains($nome_lower, ['amoxicilina', 'cefalexina', 'ceftriaxona', 'azitromicina', 'ciprofloxacino', 'levofloxacino', 'meropenem'])) {
+                $grupo_nome = 'ANTIBIÓTICOS';
+                $grupo_tipo = 'Medicamento';
+            } elseif (Str::contains($nome_lower, ['injetavel', ' inj', ' ev', ' iv ', ' im ', ' sc '])) {
+                $grupo_nome = 'INJETÁVEIS';
+                $grupo_tipo = 'Medicamento';
+            } elseif (Str::contains($nome_lower, ['soro', 'ringer', 'cloreto de sodio 0,9%', 'glicose', 'agua para injecao'])) {
                 $grupo_nome = 'SOLUÇÕES E SOROS';
                 $grupo_tipo = 'Medicamento';
-            }
-            if (Str::contains($nome_lower, ['seringa', 'agulha', 'cateter', 'atadura', 'gaze', 'luva', 'esparadrapo', 'scalp', 'sonda', 'fio', 'máscara', 'compressa'])) {
+            } elseif (Str::contains($nome_lower, ['cloridrato', 'sulfato', 'dipirona', 'paracetamol', 'acido', 'sodio', 'potassio', 'comprimido', 'ampola', 'mg', 'ml'])) {
+                $grupo_nome = 'MEDICAMENTOS';
+                $grupo_tipo = 'Medicamento';
+            } elseif (Str::contains($nome_lower, ['seringa', 'agulha', 'cateter', 'atadura', 'gaze', 'luva', 'esparadrapo', 'scalp', 'sonda', 'fio', 'máscara', 'compressa'])) {
                 $grupo_nome = 'MATERIAL MÉDICO HOSPITALAR';
                 $grupo_tipo = 'Material';
-            }
-            if (Str::contains($nome_lower, ['papel', 'caneta', 'clips', 'grampo', 'envelope', 'pasta', 'etiqueta', 'caderno', 'livro', 'toner', 'cartucho'])) {
+            } elseif (Str::contains($nome_lower, ['papel', 'caneta', 'clips', 'grampo', 'envelope', 'pasta', 'etiqueta', 'caderno', 'livro', 'toner', 'cartucho'])) {
                 $grupo_nome = 'MATERIAL DE EXPEDIENTE';
                 $grupo_tipo = 'Material';
-            }
-            if (Str::contains($nome_lower, ['detergente', 'desinfetante', 'sabão', 'sabonete', 'papel toalha', 'papel higiênico', 'álcool', 'vassoura', 'rodo', 'saco'])) {
+            } elseif (Str::contains($nome_lower, ['detergente', 'desinfetante', 'sabão', 'sabonete', 'toalha', 'higiênico', 'álcool', 'vassoura', 'rodo', 'saco'])) {
                 $grupo_nome = 'MATERIAL DE LIMPEZA E HIGIENE';
                 $grupo_tipo = 'Material';
             }

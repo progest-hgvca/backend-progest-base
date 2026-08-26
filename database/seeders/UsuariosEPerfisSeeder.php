@@ -87,70 +87,33 @@ class UsuariosEPerfisSeeder extends Seeder
             return;
         }
 
-        $isDemo = $setores->count() <= 20;
+        // A pedido, os usuários fakes (inclusive no modo Demo) devem ter acesso
+        // a todos os setores para facilitar as demonstrações e testes livres.
+        $vinculos = [
+            ['usuario_id' => $userSolicitante->id, 'perfil' => 'solicitante'],
+            ['usuario_id' => $userAlmoxarife->id,  'perfil' => 'almoxarife'],
+            ['usuario_id' => $userFarma->id,       'perfil' => 'almoxarife'],
+            ['usuario_id' => $userAdmin->id,       'perfil' => 'admin'],
+        ];
 
-        if ($isDemo) {
-            // LÓGICA DO DEMO: Vínculos estratégicos em apenas alguns setores
+        foreach ($vinculos as $vinculo) {
             foreach ($setores as $setor) {
-                // Farmacêutico vê todos os estoques
-                if ($setor->estoque) {
-                    DB::table('usuario_setor')->updateOrInsert(
-                        ['usuario_id' => $userFarma->id, 'setor_id' => $setor->id],
-                        ['perfil' => 'almoxarife', 'created_at' => $now, 'updated_at' => $now]
-                    );
+                // Almoxarifes e farmacêuticos só devem ter acesso a setores que gerenciam estoque.
+                if (!$setor->estoque && $vinculo['perfil'] === 'almoxarife') {
+                    continue;
                 }
 
-                // Solicitante: Apenas UTI 1 e Clínica Médica
-                if (in_array($setor->nome, ['UTI 1', 'CLÍNICA MÉDICA'])) {
-                    DB::table('usuario_setor')->updateOrInsert(
-                        ['usuario_id' => $userSolicitante->id, 'setor_id' => $setor->id],
-                        ['perfil' => 'solicitante', 'created_at' => $now, 'updated_at' => $now]
-                    );
-                }
-
-                // Almoxarife (limitado): Apenas Farmácia de Dispensação
-                if ($setor->nome === 'FARMÁCIA DE DISPENSAÇÃO') {
-                    DB::table('usuario_setor')->updateOrInsert(
-                        ['usuario_id' => $userAlmoxarife->id, 'setor_id' => $setor->id],
-                        ['perfil' => 'almoxarife', 'created_at' => $now, 'updated_at' => $now]
-                    );
-                }
-
-                // Admin local: Recepção e RH
-                if (in_array($setor->nome, ['RECEPÇÃO', 'RH'])) {
-                    DB::table('usuario_setor')->updateOrInsert(
-                        ['usuario_id' => $userAdmin->id, 'setor_id' => $setor->id],
-                        ['perfil' => 'admin', 'created_at' => $now, 'updated_at' => $now]
-                    );
-                }
-            }
-        } else {
-            // LÓGICA DO FULL: Distribui os usuários por todos os setores compatíveis
-            $vinculos = [
-                ['usuario_id' => $userSolicitante->id, 'perfil' => 'solicitante'],
-                ['usuario_id' => $userAlmoxarife->id,  'perfil' => 'almoxarife'],
-                ['usuario_id' => $userFarma->id,       'perfil' => 'almoxarife'],
-                ['usuario_id' => $userAdmin->id,       'perfil' => 'admin'],
-            ];
-
-            foreach ($vinculos as $vinculo) {
-                foreach ($setores as $setor) {
-                    if (!$setor->estoque && $vinculo['perfil'] === 'almoxarife') {
-                        continue;
-                    }
-
-                    DB::table('usuario_setor')->updateOrInsert(
-                        [
-                            'usuario_id' => $vinculo['usuario_id'],
-                            'setor_id'   => $setor->id,
-                        ],
-                        [
-                            'perfil'     => $vinculo['perfil'],
-                            'created_at' => $now,
-                            'updated_at' => $now,
-                        ]
-                    );
-                }
+                DB::table('usuario_setor')->updateOrInsert(
+                    [
+                        'usuario_id' => $vinculo['usuario_id'],
+                        'setor_id'   => $setor->id,
+                    ],
+                    [
+                        'perfil'     => $vinculo['perfil'],
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ]
+                );
             }
         }
     }
