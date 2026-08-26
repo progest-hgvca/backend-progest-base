@@ -208,6 +208,24 @@ class ProdutoController
     public function update(ProdutoRequest $request)
     {
         try {
+            $user = auth()->user();
+            if (!$user->isSuperAdmin()) {
+                $hasCAFAccess = \Illuminate\Support\Facades\DB::table('usuario_setor')
+                    ->join('setores', 'usuario_setor.setor_id', '=', 'setores.id')
+                    ->leftJoin('setor_distribuidor', 'setores.id', '=', 'setor_distribuidor.setor_solicitante_id')
+                    ->where('usuario_setor.usuario_id', $user->id)
+                    ->whereIn('usuario_setor.perfil', ['admin', 'almoxarife'])
+                    ->whereNull('setor_distribuidor.id')
+                    ->exists();
+
+                if (!$hasCAFAccess) {
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'A edição de produtos é permitida apenas para administradores e almoxarifes da CAF.'
+                    ], 403);
+                }
+            }
+
             $data = $request->validated()['produto'];
 
             $produto = Produto::find($data['id']);
@@ -237,6 +255,24 @@ class ProdutoController
     public function delete($id)
     {
         try {
+            $user = auth()->user();
+            if (!$user->isSuperAdmin()) {
+                $hasCAFAccess = \Illuminate\Support\Facades\DB::table('usuario_setor')
+                    ->join('setores', 'usuario_setor.setor_id', '=', 'setores.id')
+                    ->leftJoin('setor_distribuidor', 'setores.id', '=', 'setor_distribuidor.setor_solicitante_id')
+                    ->where('usuario_setor.usuario_id', $user->id)
+                    ->whereIn('usuario_setor.perfil', ['admin', 'almoxarife'])
+                    ->whereNull('setor_distribuidor.id')
+                    ->exists();
+
+                if (!$hasCAFAccess) {
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'A exclusão de produtos é permitida apenas para administradores e almoxarifes da CAF.'
+                    ], 403);
+                }
+            }
+
             $produto = Produto::find($id);
             if (!$produto) return response()->json(['status' => false, 'message' => 'Produto não encontrado'], 404);
 
