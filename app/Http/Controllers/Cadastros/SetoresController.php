@@ -40,7 +40,7 @@ class SetoresController
             'polo_id'       => 'required|exists:polos,id',
             'nome'          => 'required|string|max:255',
             'estoque'       => 'sometimes|boolean',
-            'tipo'          => 'sometimes|in:Medicamento,Material',
+            'tipo'          => 'sometimes|in:Medicamento,Material,Ambos',
         ]);
 
         if ($validator->fails()) {
@@ -189,7 +189,7 @@ class SetoresController
             'polo_id'       => 'required|exists:polos,id',
             'nome'          => 'required|string|max:255',
             'estoque'       => 'sometimes|boolean',
-            'tipo'          => 'sometimes|in:Medicamento,Material',
+            'tipo'          => 'sometimes|in:Medicamento,Material,Ambos',
         ]);
 
         if ($validator->fails()) {
