@@ -11,9 +11,6 @@ class UsuariosEPerfisSeeder extends Seeder
 {
     /**
      * Run the database seeds.
-     *
-     * Cria os usuários de teste do sistema (incluindo o admin padrão)
-     * e os vincula aos setores.
      */
     public function run()
     {
@@ -23,18 +20,6 @@ class UsuariosEPerfisSeeder extends Seeder
         // 1. Criar Usuários
         // =====================================================================
         $usuarios = [
-            // ID = 1 - Admin
-            [
-                'name'            => 'ADMIN',
-                'email'           => 'admin@admin.com',
-                'password'        => Hash::make('admin'), // senha é 'admin'
-                'cpf'             => '00000000000',
-                'telefone'        => '00000000000',
-                'data_nascimento' => '1990-01-01',
-                'status'          => 'A',
-                'regime_contratacao_id'    => 1,
-            ],
-            // ID = 2 - Solicitante
             [
                 'name'            => 'Jean Solicitante',
                 'email'           => 'jeansolicitante@gmail.com',
@@ -43,9 +28,8 @@ class UsuariosEPerfisSeeder extends Seeder
                 'telefone'        => '00000000000',
                 'data_nascimento' => '1990-01-01',
                 'status'          => 'A',
-                'regime_contratacao_id'    => 1,
+                'regime_contratacao_id' => 1,
             ],
-            // ID = 3 - Almoxarife
             [
                 'name'            => 'Arthur Almoxarife',
                 'email'           => 'arthuralmoxarife@gmail.com',
@@ -54,9 +38,8 @@ class UsuariosEPerfisSeeder extends Seeder
                 'telefone'        => '00000000000',
                 'data_nascimento' => '1990-01-01',
                 'status'          => 'A',
-                'regime_contratacao_id'    => 1,
+                'regime_contratacao_id' => 1,
             ],
-            // ID = 4 - Admin 2
             [
                 'name'            => 'Pablo Admin',
                 'email'           => 'pabloadmin@gmail.com',
@@ -65,7 +48,17 @@ class UsuariosEPerfisSeeder extends Seeder
                 'telefone'        => '00000000000',
                 'data_nascimento' => '1990-01-01',
                 'status'          => 'A',
-                'regime_contratacao_id'    => 1,
+                'regime_contratacao_id' => 1,
+            ],
+            [
+                'name'            => 'Farmacêutico',
+                'email'           => 'farmaceutico@gmail.com',
+                'password'        => Hash::make('Admin123'),
+                'cpf'             => '44444444444',
+                'telefone'        => '00000000000',
+                'data_nascimento' => '1990-01-01',
+                'status'          => 'A',
+                'regime_contratacao_id' => 1,
             ],
         ];
 
@@ -85,11 +78,7 @@ class UsuariosEPerfisSeeder extends Seeder
         $userSolicitante = DB::table('users')->where('email', 'jeansolicitante@gmail.com')->first();
         $userAlmoxarife  = DB::table('users')->where('email', 'arthuralmoxarife@gmail.com')->first();
         $userAdmin       = DB::table('users')->where('email', 'pabloadmin@gmail.com')->first();
-
-        // O admin@admin.com é mapeado para ser Admin global em DatabaseSeeder,
-        // mas também precisa do vínculo no setor que for usar. Como esse Seeder
-        // preenche TODOS os setores, vincularemos o 'admin@admin.com' também.
-        $userAdminPrincipal = DB::table('users')->where('email', 'admin@admin.com')->first();
+        $userFarma       = DB::table('users')->where('email', 'farmaceutico@gmail.com')->first();
 
         $setores = DB::table('setores')->get();
 
@@ -98,35 +87,70 @@ class UsuariosEPerfisSeeder extends Seeder
             return;
         }
 
-        $vinculos = [
-            ['usuario_id' => $userSolicitante->id,     'perfil' => 'solicitante'],
-            ['usuario_id' => $userAlmoxarife->id,      'perfil' => 'almoxarife'],
-            ['usuario_id' => $userAdmin->id,           'perfil' => 'admin'],
-            ['usuario_id' => $userAdminPrincipal->id,  'perfil' => 'admin'],
-        ];
+        $isDemo = $setores->count() <= 20;
 
-        foreach ($vinculos as $vinculo) {
+        if ($isDemo) {
+            // LÓGICA DO DEMO: Vínculos estratégicos em apenas alguns setores
             foreach ($setores as $setor) {
-                $hasDistribuidor = DB::table('setor_distribuidor')->where('setor_solicitante_id', $setor->id)->exists();
-                if (!$hasDistribuidor && $vinculo['perfil'] === 'solicitante') {
-                    continue;
+                // Farmacêutico vê todos os estoques
+                if ($setor->estoque) {
+                    DB::table('usuario_setor')->updateOrInsert(
+                        ['usuario_id' => $userFarma->id, 'setor_id' => $setor->id],
+                        ['perfil' => 'almoxarife', 'created_at' => $now, 'updated_at' => $now]
+                    );
                 }
 
-                if (!$setor->estoque && $vinculo['perfil'] === 'almoxarife') {
-                    continue;
+                // Solicitante: Apenas UTI 1 e Clínica Médica
+                if (in_array($setor->nome, ['UTI 1', 'CLÍNICA MÉDICA'])) {
+                    DB::table('usuario_setor')->updateOrInsert(
+                        ['usuario_id' => $userSolicitante->id, 'setor_id' => $setor->id],
+                        ['perfil' => 'solicitante', 'created_at' => $now, 'updated_at' => $now]
+                    );
                 }
 
-                DB::table('usuario_setor')->updateOrInsert(
-                    [
-                        'usuario_id' => $vinculo['usuario_id'],
-                        'setor_id'   => $setor->id,
-                    ],
-                    [
-                        'perfil'     => $vinculo['perfil'],
-                        'created_at' => $now,
-                        'updated_at' => $now,
-                    ]
-                );
+                // Almoxarife (limitado): Apenas Farmácia de Dispensação
+                if ($setor->nome === 'FARMÁCIA DE DISPENSAÇÃO') {
+                    DB::table('usuario_setor')->updateOrInsert(
+                        ['usuario_id' => $userAlmoxarife->id, 'setor_id' => $setor->id],
+                        ['perfil' => 'almoxarife', 'created_at' => $now, 'updated_at' => $now]
+                    );
+                }
+
+                // Admin local: Recepção e RH
+                if (in_array($setor->nome, ['RECEPÇÃO', 'RH'])) {
+                    DB::table('usuario_setor')->updateOrInsert(
+                        ['usuario_id' => $userAdmin->id, 'setor_id' => $setor->id],
+                        ['perfil' => 'admin', 'created_at' => $now, 'updated_at' => $now]
+                    );
+                }
+            }
+        } else {
+            // LÓGICA DO FULL: Distribui os usuários por todos os setores compatíveis
+            $vinculos = [
+                ['usuario_id' => $userSolicitante->id, 'perfil' => 'solicitante'],
+                ['usuario_id' => $userAlmoxarife->id,  'perfil' => 'almoxarife'],
+                ['usuario_id' => $userFarma->id,       'perfil' => 'almoxarife'],
+                ['usuario_id' => $userAdmin->id,       'perfil' => 'admin'],
+            ];
+
+            foreach ($vinculos as $vinculo) {
+                foreach ($setores as $setor) {
+                    if (!$setor->estoque && $vinculo['perfil'] === 'almoxarife') {
+                        continue;
+                    }
+
+                    DB::table('usuario_setor')->updateOrInsert(
+                        [
+                            'usuario_id' => $vinculo['usuario_id'],
+                            'setor_id'   => $setor->id,
+                        ],
+                        [
+                            'perfil'     => $vinculo['perfil'],
+                            'created_at' => $now,
+                            'updated_at' => $now,
+                        ]
+                    );
+                }
             }
         }
     }
