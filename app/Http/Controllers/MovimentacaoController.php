@@ -40,7 +40,10 @@ class MovimentacaoController extends Controller
         $validator = Validator::make($data, [
             'usuario_id' => 'required|integer|exists:users,id',
             'tipo' => 'required|in:T,D,S',
-            'status_solicitacao' => 'nullable|in:A,R,P,C',
+            // Uma movimentação nasce como rascunho (C) ou pendente (P). Aprovar/reprovar
+            // é exclusivo do process(), que é quem movimenta estoque e lotes — deixar
+            // criar já como 'A' registraria uma saída que nunca aconteceu.
+            'status_solicitacao' => 'nullable|in:P,C',
             'setor_origem_id' => 'nullable|integer|exists:setores,id',
             'setor_destino_id' => 'nullable|integer|exists:setores,id',
             'itens' => $itensRules,
@@ -191,6 +194,24 @@ class MovimentacaoController extends Controller
 
             Log::info("Processando ação: $action para Movimentacao ID: $id");
 
+            // Guarda de máquina de estados: impede que a mesma movimentação seja
+            // aprovada duas vezes (duplo clique / retry), o que debitaria o estoque
+            // de novo, e impede aprovar/reprovar o que já foi decidido ou cancelado.
+            if (in_array($action, ['approve', 'reject']) && $mov->status_solicitacao !== 'P') {
+                DB::rollBack();
+                $rotulos = [
+                    'A' => 'já foi aprovada',
+                    'R' => 'já foi reprovada',
+                    'X' => 'foi cancelada',
+                    'C' => 'ainda é um rascunho',
+                ];
+                $motivo = $rotulos[$mov->status_solicitacao] ?? 'não está pendente';
+                return response()->json([
+                    'status' => false,
+                    'message' => "Esta movimentação {$motivo} e não pode ser processada novamente."
+                ], 422);
+            }
+
             if ($action === 'approve') {
                 // Preparar mapa de quantidades liberadas
                 $quantidadesLiberadas = [];
@@ -227,6 +248,20 @@ class MovimentacaoController extends Controller
                     if ($estoqueOrigem->quantidade_atual < $qtdLiberar) {
                         $nomeProduto = $item->produto?->nome ?? "ID {$item->produto_id}";
                         $errosEstoque[] = "Estoque insuficiente para '{$nomeProduto}'. Disponível: {$estoqueOrigem->quantidade_atual}, Solicitado: {$qtdLiberar}.";
+                        continue;
+                    }
+
+                    // O saldo agregado não basta: os lotes precisam cobrir a quantidade,
+                    // senão a baixa FIFO deixaria estoque e lotes divergentes.
+                    // Produtos sem nenhum lote no setor seguem só pelo saldo agregado.
+                    $erroLote = $this->validarCoberturaDeLotes(
+                        $item->produto_id,
+                        $mov->setor_origem_id,
+                        $qtdLiberar,
+                        $item->produto?->nome ?? "ID {$item->produto_id}"
+                    );
+                    if ($erroLote) {
+                        $errosEstoque[] = $erroLote;
                     }
                 }
 
@@ -485,11 +520,16 @@ class MovimentacaoController extends Controller
             $lotesUsados   = [];
             $restante      = $qtdNecessaria;
 
-            $lotes = EstoqueLote::where('produto_id', $item->produto_id)
-                ->where('setor_id', $mov->setor_origem_id)
-                ->where('quantidade_disponivel', '>', 0)
+            // Mesma regra da aprovação: só lotes na validade entram no FIFO
+            $lotes = $this->lotesDisponiveisQuery($item->produto_id, $mov->setor_origem_id)
                 ->orderBy('data_vencimento', 'asc') // FIFO: mais antigo primeiro
                 ->get();
+
+            $vencidoIgnorado = (float) EstoqueLote::where('produto_id', $item->produto_id)
+                ->where('setor_id', $mov->setor_origem_id)
+                ->where('quantidade_disponivel', '>', 0)
+                ->whereDate('data_vencimento', '<', now()->toDateString())
+                ->sum('quantidade_disponivel');
 
             foreach ($lotes as $lote) {
                 if ($restante <= 0) break;
@@ -510,11 +550,58 @@ class MovimentacaoController extends Controller
                 'produto_nome'             => $item->produto?->nome ?? "ID {$item->produto_id}",
                 'quantidade_solicitada'    => $qtdNecessaria,
                 'quantidade_sem_cobertura' => max(0, $restante),
+                'quantidade_vencida_ignorada' => $vencidoIgnorado,
                 'lotes_a_consumir'         => $lotesUsados,
             ];
         }
 
         return response()->json(['status' => true, 'data' => $preview]);
+    }
+
+    /**
+     * Lotes que podem ser consumidos: com saldo e dentro da validade.
+     * Lote vencido não é dispensado nem transferido — sai por descarte/baixa.
+     */
+    private function lotesDisponiveisQuery(int $produtoId, int $setorId)
+    {
+        return EstoqueLote::where('produto_id', $produtoId)
+            ->where('setor_id', $setorId)
+            ->where('quantidade_disponivel', '>', 0)
+            ->whereDate('data_vencimento', '>=', now()->toDateString());
+    }
+
+    /**
+     * Verifica se os lotes válidos cobrem a quantidade a liberar.
+     *
+     * @return string|null Mensagem de erro, ou null quando está tudo certo.
+     */
+    private function validarCoberturaDeLotes(int $produtoId, int $setorOrigemId, float $qtdLiberar, string $nomeProduto): ?string
+    {
+        $totalComSaldo = (float) EstoqueLote::where('produto_id', $produtoId)
+            ->where('setor_id', $setorOrigemId)
+            ->where('quantidade_disponivel', '>', 0)
+            ->sum('quantidade_disponivel');
+
+        // Produto sem controle de lote neste setor: segue apenas pelo saldo agregado
+        if ($totalComSaldo <= 0) {
+            return null;
+        }
+
+        $disponivelValido = (float) $this->lotesDisponiveisQuery($produtoId, $setorOrigemId)
+            ->sum('quantidade_disponivel');
+
+        if ($disponivelValido >= $qtdLiberar) {
+            return null;
+        }
+
+        $vencido = $totalComSaldo - $disponivelValido;
+        if ($vencido > 0 && $totalComSaldo >= $qtdLiberar) {
+            return "Lotes vencidos não podem ser dispensados: '{$nomeProduto}' tem {$disponivelValido} na validade"
+                . " (e {$vencido} vencido(s)), mas a movimentação pede {$qtdLiberar}.";
+        }
+
+        return "Saldo em lotes insuficiente para '{$nomeProduto}'. Disponível em lotes válidos: {$disponivelValido},"
+            . " solicitado: {$qtdLiberar}. Verifique o estoque do produto neste setor.";
     }
 
     /**
@@ -526,12 +613,13 @@ class MovimentacaoController extends Controller
         $restante = $qtdLiberar;
         $lotesConsumidos = [];
 
-        $lotes = EstoqueLote::where('produto_id', $produtoId)
-            ->where('setor_id', $setorOrigemId)
-            ->where('quantidade_disponivel', '>', 0)
+        $lotes = $this->lotesDisponiveisQuery($produtoId, $setorOrigemId)
             ->orderBy('data_vencimento', 'asc') // FIFO
             ->lockForUpdate()
             ->get();
+
+        // Sem lote nenhum: produto controlado apenas pelo saldo agregado
+        $temLotes = $lotes->isNotEmpty();
 
         foreach ($lotes as $lote) {
             if ($restante <= 0) break;
@@ -581,7 +669,16 @@ class MovimentacaoController extends Controller
                 ]);
             }
         }
-        
+
+        // Rede de segurança: se os lotes não cobriram tudo, o saldo agregado já foi
+        // debitado e estoque/lotes ficariam divergentes. Aborta a transação inteira.
+        if ($temLotes && $restante > 0) {
+            throw new \RuntimeException(
+                "Lotes insuficientes para o produto {$produtoId} no setor {$setorOrigemId}: "
+                . "faltaram {$restante} unidade(s) com validade vigente."
+            );
+        }
+
         return $lotesConsumidos;
     }
 }

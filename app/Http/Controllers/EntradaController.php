@@ -17,6 +17,20 @@ use Illuminate\Support\Facades\Validator;
 class EntradaController extends Controller
 {
     /**
+     * Um produto só entra num setor cujo tipo aceite o tipo do seu grupo.
+     * Setores do tipo 'Ambos' recebem medicamentos e materiais.
+     */
+    private function produtoCompativelComSetor($produto, $setor): bool
+    {
+        if (!$produto || !$produto->grupoProduto) {
+            return false;
+        }
+
+        return $setor->tipo === 'Ambos'
+            || $produto->grupoProduto->tipo === $setor->tipo;
+    }
+
+    /**
      * Registrar uma nova entrada de produtos no estoque do setor.
      */
     public function add(Request $request)
@@ -111,7 +125,7 @@ class EntradaController extends Controller
                         throw new \RuntimeException('Produto não encontrado.');
                     }
 
-                    if (!$produto->grupoProduto || $produto->grupoProduto->tipo !== $setor->tipo) {
+                    if (!$this->produtoCompativelComSetor($produto, $setor)) {
                         throw new \RuntimeException('Produto "' . $produto->nome . '" não é compatível com o tipo do setor.');
                     }
 
@@ -360,8 +374,9 @@ class EntradaController extends Controller
                 foreach ($data['itens'] as $item) {
                     $produto = Produto::with('grupoProduto')->find($item['produto_id']);
 
-                    if (!$produto || !$produto->grupoProduto || $produto->grupoProduto->tipo !== $setor->tipo) {
-                        throw new \RuntimeException('Produto "' . $produto->nome . '" não é compatível com o tipo do setor.');
+                    if (!$this->produtoCompativelComSetor($produto, $setor)) {
+                        $nomeProduto = $produto->nome ?? ('ID ' . $item['produto_id']);
+                        throw new \RuntimeException('Produto "' . $nomeProduto . '" não é compatível com o tipo do setor.');
                     }
 
                     $itemEntrada = ItensEntrada::create([

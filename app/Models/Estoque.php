@@ -82,8 +82,13 @@ class Estoque extends Model
             return;
         }
 
-        $produtos = Produto::whereHas('grupoProduto', function ($query) use ($setor) {
-            $query->where('tipo', $setor->tipo)->where('status', 'A');
+        // Setores do tipo 'Ambos' recebem medicamentos e materiais
+        $tiposAceitos = $setor->tipo === 'Ambos'
+            ? ['Medicamento', 'Material']
+            : [$setor->tipo];
+
+        $produtos = Produto::whereHas('grupoProduto', function ($query) use ($tiposAceitos) {
+            $query->whereIn('tipo', $tiposAceitos)->where('status', 'A');
         })->where('status', 'A')->get();
 
         foreach ($produtos as $produto) {
@@ -114,8 +119,9 @@ class Estoque extends Model
             return;
         }
 
+        // Setores do tipo 'Ambos' recebem medicamentos e materiais
         $setores = Setores::where('estoque', true)
-            ->where('tipo', $produto->grupoProduto->tipo)
+            ->whereIn('tipo', [$produto->grupoProduto->tipo, 'Ambos'])
             ->where('status', 'A')
             ->get();
 

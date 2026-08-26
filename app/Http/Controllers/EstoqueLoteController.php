@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\EstoqueLote;
 use App\Models\Estoque;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
@@ -79,30 +80,44 @@ class EstoqueLoteController extends Controller
                 ], 422);
             }
 
-            $lote = EstoqueLote::find($request->id);
-            $quantidadeAnterior = $lote->quantidade_disponivel;
-            $diferenca = $request->quantidade_disponivel - $quantidadeAnterior;
+            // Lote e saldo agregado precisam mudar juntos, senão ficam divergentes.
+            $resultado = DB::transaction(function () use ($request) {
+                $lote = EstoqueLote::where('id', $request->id)->lockForUpdate()->first();
+                $quantidadeAnterior = $lote->quantidade_disponivel;
+                $diferenca = $request->quantidade_disponivel - $quantidadeAnterior;
 
-            // Atualiza o lote
-            $lote->quantidade_disponivel = $request->quantidade_disponivel;
-            $lote->save();
+                $estoque = Estoque::where('produto_id', $lote->produto_id)
+                    ->where('setor_id', $lote->setor_id)
+                    ->lockForUpdate()
+                    ->first();
 
-            // Atualiza a quantidade geral do estoque
-            $estoque = Estoque::where('produto_id', $lote->produto_id)
-                ->where('setor_id', $lote->setor_id)
-                ->first();
-
-            if ($estoque) {
-                $estoque->quantidade_atual += $diferenca;
-
-                if ($estoque->quantidade_atual < 0) {
-                    $estoque->quantidade_atual = 0;
+                // Zerar o saldo agregado à força mascararia uma inconsistência:
+                // é melhor recusar o ajuste e deixar o operador corrigir a origem.
+                if ($estoque && ($estoque->quantidade_atual + $diferenca) < 0) {
+                    return [
+                        'erro' => 'O ajuste deixaria o estoque do produto negativo ('
+                            . $estoque->quantidade_atual . ' ' . ($diferenca >= 0 ? '+' : '') . $diferenca
+                            . '). Revise a quantidade informada.',
+                    ];
                 }
 
-                $estoque->status_disponibilidade = $estoque->quantidade_atual > 0 ? 'D' : 'I';
-                $estoque->save();
+                $lote->quantidade_disponivel = $request->quantidade_disponivel;
+                $lote->save();
+
+                if ($estoque) {
+                    $estoque->quantidade_atual += $diferenca;
+                    $estoque->status_disponibilidade = $estoque->quantidade_atual > 0 ? 'D' : 'I';
+                    $estoque->save();
+                }
+
+                return ['lote' => $lote];
+            });
+
+            if (isset($resultado['erro'])) {
+                return response()->json(['status' => false, 'message' => $resultado['erro']], 422);
             }
 
+            $lote = $resultado['lote'];
             $lote->load(['setor', 'produto.grupoProduto', 'produto.unidadeMedida']);
 
             return response()->json([
