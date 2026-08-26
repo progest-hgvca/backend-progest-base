@@ -207,23 +207,28 @@ class DadosFakeRelatoriosSeeder extends Seeder
         // Se não achar nenhum com saldo, usa qualquer um (e o seeder terá que criar saldo para ele)
         $produto_id = $estoqueDestino ? $estoqueDestino->produto_id : $this->produtos[array_rand($this->produtos)]->id;
 
-        // Se não tinha estoque suficiente, força a criação do saldo para evitar o erro de trigger negativo
+        // Se não tinha estoque suficiente, força a criação ou atualização do saldo para evitar o erro de trigger negativo
         if (!$estoqueDestino) {
             $estoqueDestino = Estoque::firstOrCreate(
                 ['setor_id' => $setorDestino->id, 'produto_id' => $produto_id],
-                ['quantidade_minima' => 10, 'status_disponibilidade' => 'D']
+                ['quantidade_minima' => 10, 'quantidade_atual' => 100, 'status_disponibilidade' => 'D']
             );
-            $estoqueDestino->quantidade_atual = 100;
-            $estoqueDestino->save();
+            
+            // Caso ele já existisse (mas com saldo < 50, motivo de não ter sido pego na query anterior), forçamos o valor para 100
+            if ($estoqueDestino->quantidade_atual < 50) {
+                $estoqueDestino->quantidade_atual = 100;
+                $estoqueDestino->status_disponibilidade = 'D';
+                $estoqueDestino->save();
+            }
         }
 
         $cenarios = [
-            ['status' => 'P', 'obs' => 'Movimentação Pendente (Aguardando Distribuidor)', 'liberada' => null],
-            ['status' => 'A', 'obs' => 'Movimentação Aprovada (Liberação Total)', 'liberada' => 'total'],
-            ['status' => 'A', 'obs' => 'Movimentação Aprovada Parcial (Liberação Menor)', 'liberada' => 'parcial'],
-            ['status' => 'R', 'obs' => 'Movimentação Rejeitada (Recusa Integral)', 'liberada' => 'zero'],
-            ['status' => 'C', 'obs' => 'Movimentação Cancelada (Pelo Solicitante)', 'liberada' => null],
-            ['status' => 'D', 'obs' => 'Rascunho (Não enviada)', 'liberada' => null],
+            ['status' => 'P', 'liberada' => 'nenhum', 'obs' => 'Movimentação Pendente (Aguardando Distribuidor)'],
+            ['status' => 'A', 'liberada' => 'total', 'obs' => 'Movimentação Aprovada (Liberação Total)'],
+            ['status' => 'A', 'liberada' => 'parcial', 'obs' => 'Movimentação Aprovada Parcial (Liberação Menor)'],
+            ['status' => 'R', 'liberada' => 'zero', 'obs' => 'Movimentação Rejeitada (Recusa Integral)'],
+            ['status' => 'X', 'liberada' => 'nenhum', 'obs' => 'Movimentação Cancelada (Pelo Solicitante)'],
+            ['status' => 'C', 'liberada' => 'nenhum', 'obs' => 'Rascunho (Não enviada)'],
         ];
 
         foreach ($cenarios as $index => $cenario) {
