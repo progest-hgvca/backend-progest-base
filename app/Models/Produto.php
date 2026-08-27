@@ -17,6 +17,7 @@ class Produto extends Model
         'codigo_simpas',
         'codigo_barras',
         'grupo_produto_id',
+        'lista_portaria',
         'unidade_medida_id',
         'status'
     ];
@@ -64,6 +65,14 @@ class Produto extends Model
         return $query->where('status', 'I');
     }
 
+    /** Somente produtos pertencentes a grupos de medicamentos controlados */
+    public function scopeControlado($query)
+    {
+        return $query->whereHas('grupoProduto', function ($q) {
+            $q->where('controlado', true);
+        });
+    }
+
     public function scopePorGrupo($query, $grupoId)
     {
         return $query->where('grupo_produto_id', $grupoId);
@@ -83,6 +92,14 @@ class Produto extends Model
     public function isInativo()
     {
         return $this->status === 'I';
+    }
+
+    /**
+     * Um produto e controlado quando pertence a um grupo marcado como controlado.
+     */
+    public function getControladoAttribute()
+    {
+        return (bool) optional($this->grupoProduto)->controlado;
     }
 
     // Accessor para nome completo (nome + marca)

@@ -16,6 +16,17 @@ class GrupoProdutoRequest extends BaseFormRequest
             'grupoProduto.nome' => 'required|string|min:3|max:191|unique:grupo_produto,nome,' . $id,
             'grupoProduto.tipo' => 'required|in:Medicamento,Material',
             'grupoProduto.status' => 'required|in:A,I',
+            // Somente grupos do tipo Medicamento podem ser marcados como controlados
+            'grupoProduto.controlado' => [
+                'nullable',
+                'boolean',
+                function ($attribute, $value, $fail) use ($data) {
+                    $tipo = $data['tipo'] ?? null;
+                    if (filter_var($value, FILTER_VALIDATE_BOOLEAN) && $tipo !== 'Medicamento') {
+                        $fail('Apenas grupos do tipo Medicamento podem ser marcados como controlados.');
+                    }
+                },
+            ],
         ];
 
         return $rules;
@@ -42,7 +53,8 @@ class GrupoProdutoRequest extends BaseFormRequest
         return [
             'grupoProduto.nome' => 'Nome',
             'grupoProduto.tipo' => 'Tipo de Produto',
-            'grupoProduto.status' => 'Status'
+            'grupoProduto.status' => 'Status',
+            'grupoProduto.controlado' => 'Medicamento Controlado'
         ];
     }
 }

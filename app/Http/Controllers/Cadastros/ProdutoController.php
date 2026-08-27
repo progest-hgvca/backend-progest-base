@@ -40,6 +40,12 @@ class ProdutoController
                 $query->where('grupo_produto_id', $grupoProdutoId);
             }
 
+            // Filtro por medicamentos controlados (direto)
+            $controlado = $request->input('controlado');
+            if (!empty($controlado)) {
+                $query->controlado();
+            }
+
             // Filtro por marca (direto)
             $marca = $request->input('marca');
             if (!empty($marca)) {
@@ -62,6 +68,10 @@ class ProdutoController
                     }
                     if (!empty($filters['grupo_produto_id'])) {
                         $query->where('grupo_produto_id', $filters['grupo_produto_id']);
+                    }
+                    // Somente medicamentos controlados (Portaria 344/98)
+                    if (!empty($filters['controlado'])) {
+                        $query->controlado();
                     }
                     if (!empty($filters['nome'])) {
                         $query->where('produtos.nome', 'LIKE', '%' . $filters['nome'] . '%');
@@ -108,7 +118,8 @@ class ProdutoController
             $query->select(
                 'produtos.id', 'produtos.nome', 'produtos.marca',
                 'produtos.codigo_simpas', 'produtos.codigo_barras',
-                'produtos.grupo_produto_id', 'produtos.unidade_medida_id', 'produtos.status'
+                'produtos.grupo_produto_id', 'produtos.lista_portaria',
+                'produtos.unidade_medida_id', 'produtos.status'
             );
 
             // Paginação: per_page padrão 1000; se per_page=0 retorna tudo (sem paginação)
@@ -189,6 +200,7 @@ class ProdutoController
             $produto->codigo_simpas = !empty($data['codigo_simpas']) ? trim($data['codigo_simpas']) : null;
             $produto->codigo_barras = !empty($data['codigo_barras']) ? trim($data['codigo_barras']) : null;
             $produto->grupo_produto_id = $data['grupo_produto_id'];
+            $produto->lista_portaria = $this->normalizarListaPortaria($data);
             $produto->unidade_medida_id = $data['unidade_medida_id'];
             $produto->status = $data['status'] ?? 'A';
 
@@ -236,6 +248,7 @@ class ProdutoController
             $produto->codigo_simpas = !empty($data['codigo_simpas']) ? trim($data['codigo_simpas']) : null;
             $produto->codigo_barras = !empty($data['codigo_barras']) ? trim($data['codigo_barras']) : null;
             $produto->grupo_produto_id = $data['grupo_produto_id'];
+            $produto->lista_portaria = $this->normalizarListaPortaria($data);
             $produto->unidade_medida_id = $data['unidade_medida_id'];
             $produto->status = $data['status'] ?? $produto->status;
 
@@ -331,12 +344,26 @@ class ProdutoController
     }
 
     /**
+     * Normaliza a lista da Portaria 344/98.
+     * Só é mantida quando o produto pertence a um grupo de medicamentos controlados.
+     */
+    private function normalizarListaPortaria(array $data)
+    {
+        $controlado = GrupoProduto::where('id', $data['grupo_produto_id'] ?? null)->value('controlado');
+        if (!$controlado || empty($data['lista_portaria'])) {
+            return null;
+        }
+
+        return strtoupper(trim($data['lista_portaria']));
+    }
+
+    /**
      * Obter dados auxiliares para o formulário (grupos e unidades)
      */
     public function getDadosAuxiliares(Request $request)
     {
         try {
-            $grupos = GrupoProduto::where('status', 'A')->select('id', 'nome')->orderBy('nome')->get();
+            $grupos = GrupoProduto::where('status', 'A')->select('id', 'nome', 'tipo', 'controlado')->orderBy('nome')->get();
             $unidades = UnidadeMedida::where('status', 'A')->select('id', 'nome', 'sigla')->orderBy('nome')->get();
 
             return response()->json(['status' => true, 'data' => ['grupos' => $grupos, 'unidades' => $unidades]]);

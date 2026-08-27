@@ -19,6 +19,10 @@ class GrupoProdutoController
             $grupoProduto->nome = $data['grupoProduto']['nome'];
             $grupoProduto->status = $data['grupoProduto']['status'] ?? 'A';
             $grupoProduto->tipo = $data['grupoProduto']['tipo'] ?? 'Material';
+            // Somente medicamentos podem ser controlados
+            $grupoProduto->controlado = $grupoProduto->tipo === 'Medicamento'
+                ? filter_var($data['grupoProduto']['controlado'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                : false;
             $grupoProduto->save();
 
             return response()->json(['status' => true, 'data' => $grupoProduto], 201);
@@ -44,12 +48,18 @@ class GrupoProdutoController
             $query->where('tipo', $tipo);
         }
 
+        // Filtro por grupos controlados (Portaria 344/98)
+        $controlado = $request->input('controlado');
+        if ($controlado !== null && $controlado !== '') {
+            $query->where('controlado', filter_var($controlado, FILTER_VALIDATE_BOOLEAN));
+        }
+
         // Filtros legados (compatibilidade)
         $filters = $request->input('filters', []);
         foreach ($filters as $condition) {
             if (is_array($condition)) {
                 foreach ($condition as $column => $value) {
-                    $allowedColumns = ['nome', 'status', 'tipo'];
+                    $allowedColumns = ['nome', 'status', 'tipo', 'controlado'];
                     if (in_array($column, $allowedColumns)) {
                         $query->where($column, 'LIKE', '%' . $value . '%');
                     }
@@ -60,7 +70,7 @@ class GrupoProdutoController
         // Ordenação dinâmica
         $sortBy = $request->input('sort_by', 'nome');
         $sortDir = $request->input('sort_dir', 'asc');
-        $allowedSortColumns = ['id', 'nome', 'tipo', 'status'];
+        $allowedSortColumns = ['id', 'nome', 'tipo', 'status', 'controlado'];
         if (in_array($sortBy, $allowedSortColumns) && in_array(strtolower($sortDir), ['asc', 'desc'])) {
             $query->orderBy($sortBy, $sortDir);
         } else {
@@ -68,7 +78,7 @@ class GrupoProdutoController
         }
 
         $grupoProdutos = $query
-            ->select('id', 'nome', 'status', 'tipo')
+            ->select('id', 'nome', 'status', 'tipo', 'controlado')
             ->get();
 
         return response()->json(['status' => true, 'data' => $grupoProdutos]);
@@ -105,6 +115,10 @@ class GrupoProdutoController
             $grupoProduto->nome = $data['grupoProduto']['nome'];
             $grupoProduto->status = $data['grupoProduto']['status'];
             $grupoProduto->tipo = $data['grupoProduto']['tipo'];
+            // Somente medicamentos podem ser controlados
+            $grupoProduto->controlado = $grupoProduto->tipo === 'Medicamento'
+                ? filter_var($data['grupoProduto']['controlado'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                : false;
             $grupoProduto->save();
 
             return response()->json(['status' => true, 'data' => $grupoProduto]);
