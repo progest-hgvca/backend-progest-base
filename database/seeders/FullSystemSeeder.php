@@ -17,12 +17,12 @@ class FullSystemSeeder extends Seeder
     public function run()
     {
         $this->call([
-            PolosESetoresFullSeeder::class,     // 63 setores
-            AdminInicialSeeder::class,          // Usuário adminti
-            UsuariosEPerfisSeeder::class,       // Usuários distribuídos
-            FornecedoresSeeder::class,          // Fornecedores fakes
-            ExcelProdutosSeeder::class,         // Catalogo GIGANTE do Excel (com inferência de grupos)
-            DadosFakeRelatoriosSeeder::class,   // Estoques e Movimentações em larga escala
+            PolosESetoresFullSeeder::class,        // 63 setores
+            AdminInicialSeeder::class,             // Usuário adminti
+            UsuariosEPerfisSeeder::class,          // Usuários distribuídos
+            FornecedoresSeeder::class,             // Fornecedores fakes
+            CatalogoProdutosOficialSeeder::class,  // Catálogo oficial pré-processado (417 produtos classificados)
+            DadosFakeRelatoriosSeeder::class,      // Estoques e Movimentações em larga escala
         ]);
     }
 }

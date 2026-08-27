@@ -15,9 +15,9 @@ class DatabaseSeeder extends Seeder
     public function run()
     {
         $this->call([
-            PolosESetoresFullSeeder::class, // Estrutura oficial completa (63 setores)
-            AdminInicialSeeder::class,      // Cria adminti no setor de TI
-            ExcelProdutosSeeder::class,     // Produtos classificados do excel
+            PolosESetoresFullSeeder::class,        // Estrutura oficial completa (63 setores)
+            AdminInicialSeeder::class,             // Cria adminti no setor de TI
+            CatalogoProdutosOficialSeeder::class,  // Catálogo oficial pré-processado (leve e ultrarrápido)
         ]);
     }
 }

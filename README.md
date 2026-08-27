@@ -95,7 +95,7 @@ Ideal para simular o ambiente de produção com domínios reais e Proxy Reverso.
    docker compose -f docker-compose.local.yml up -d --build
    ```
 6.  **Prepare o Banco:**
-   *Opção A: Criar banco oficial para Produção (produtos reais do excel, setores e o adminti):*
+   *Opção A: Criar banco oficial para Produção (Catálogo oficial de produtos, 63 setores e o adminti):*
    ```bash
    docker compose -f docker-compose.local.yml exec progest-api php artisan migrate:fresh --seed
    ```
@@ -103,9 +103,16 @@ Ideal para simular o ambiente de produção com domínios reais e Proxy Reverso.
    ```bash
    docker compose -f docker-compose.local.yml exec progest-api sh -c "php artisan migrate:fresh && php artisan db:seed --class=DemoSystemSeeder"
    ```
-   *Opção C: Criar banco Full (Catálogo excel completo + 63 setores + muitos dados fakes para teste de carga):*
+   *Opção C: Criar banco Full (Catálogo oficial completo + 63 setores + dados fakes para teste de carga):*
    ```bash
    docker compose -f docker-compose.local.yml exec progest-api sh -c "php artisan migrate:fresh && php artisan db:seed --class=FullSystemSeeder"
+   ```
+
+   *(Nota de Performance: O catálogo oficial de produtos roda a partir do seeder estático pré-processado `CatalogoProdutosOficialSeeder`, garantindo execução em menos de 1 segundo sem consumo excessivo de memória RAM).*
+
+   *Caso surja uma nova planilha Excel de produtos no futuro, basta regerar o seeder com:*
+   ```bash
+   php artisan produtos:gerar-seeder "caminho/nova_planilha.xlsx"
    ```
 
 -----
