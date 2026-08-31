@@ -19,3 +19,5 @@ yarn-error.log
 /.vscode
 
 .agente
+DEPLOY_AWS.md
+GUIA_DEPLOY_AWS.md
