@@ -1,79 +1,22 @@
-name: CD Backend - Deploy with Docker
+name: Deploy to AWS
 
 on:
   push:
     branches:
-      - main
+      - main # Muda se a sua branch principal tiver outro nome
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: Production
     steps:
-      - name: ⚙️ Checkout do Repositório
-        uses: actions/checkout@v4
+      - name: Acessando servidor e atualizando
+        uses: appleboy/ssh-action@master
         with:
-          fetch-depth: 0
-
-      - name: 🛑 Parar containers antigos
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          port: ${{ secrets.SSH_PORT }}
+          host: ${{ secrets.AWS_HOST }}
+          username: ${{ secrets.AWS_USERNAME }}
+          key: ${{ secrets.AWS_SSH_KEY }}
           script: |
-            if [ -d "./progest/backend-progest" ]; then
-              cd ./progest/backend-progest
-              echo "🛑 Parando containers..."
-              docker-compose down || true
-            fi
-
-      - name: 📦 Transferir arquivos via SCP
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          port: ${{ secrets.SSH_PORT }}
-          source: "."
-          target: "./progest/backend-progest"
-          overwrite: true
-          strip_components: 0
-
-      - name: 🚀 Executar Deploy
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          port: ${{ secrets.SSH_PORT }}
-          script: |
-            cd ./progest/backend-progest
-
-            echo "📋 Arquivos transferidos:"
-            ls -la
-
-            echo "📋 Verificando Makefile..."
-            if [ ! -f Makefile ]; then
-              echo "❌ Makefile não encontrado!"
-              ls -la
-              exit 1
-            fi
-
-            echo "🔧 Verificando .env.api..."
-            if [ ! -f .env.api ]; then
-              echo "⚠️ Arquivo .env.api não encontrado, criando a partir do exemplo..."
-              if [ -f .env.api.example ]; then
-                cp .env.api.example .env.api
-                echo "📝 .env.api criado - LEMBRE-SE DE CONFIGURAR AS VARIÁVEIS!"
-              fi
-            fi
-
-            echo "🚀 Executando make deploy..."
-            make deploy
-
-            echo "📊 Containers ativos:"
-            docker ps | grep progest || echo "Nenhum container rodando ainda..."
-
-            echo "✅ Deploy do Backend concluído com sucesso!"
+            cd ~/backend-progest-base
+            git fetch origin
+            git reset --hard origin/main
+            docker compose up -d --build
