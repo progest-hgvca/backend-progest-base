@@ -7,6 +7,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Carbon\Carbon;
 
+/**
+ * ATENÇÃO - REGRA DE NEGÓCIO DO PROJETO:
+ * Usuários de teste base (Jean Solicitante, Arthur Almoxarife, Pablo Admin)
+ * e seus perfis vinculados aos setores.
+ * NÃO ALTERAR NEM EXCLUIR em seeders/migrations (utilizados por Cypress e testes manuais).
+ */
 class UsuariosEPerfisSeeder extends Seeder
 {
     /**

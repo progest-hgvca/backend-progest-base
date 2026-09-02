@@ -3497,8 +3497,35 @@ class CatalogoProdutosOficialSeeder extends Seeder
   ),
 );
 
-        DB::transaction(function () use ($produtos, $grupoIds, $unidadeIds, $now) {
+        $determinarPortaria = function ($nome, $grupo) {
+            if ($grupo !== 'MEDICAMENTOS CONTROLADOS') {
+                return null;
+            }
+            $n = mb_strtoupper($nome, 'UTF-8');
+            if (str_contains($n, 'MORFINA') || str_contains($n, 'FENTANIL') || str_contains($n, 'PETIDINA') || str_contains($n, 'ALFENTANIL') || str_contains($n, 'SUFENTANIL')) {
+                return 'A1';
+            }
+            if (str_contains($n, 'TRAMADOL')) {
+                return 'A2';
+            }
+            if (str_contains($n, 'METILFENIDATO')) {
+                return 'A3';
+            }
+            if (str_contains($n, 'CLONAZEPAM') || str_contains($n, 'DIAZEPAM') || str_contains($n, 'MIDAZOLAM') || str_contains($n, 'LORAZEPAM') || str_contains($n, 'ALPRAZOLAM') || str_contains($n, 'BROMAZEPAM') || str_contains($n, 'CLOBAZAM')) {
+                return 'B1';
+            }
+            if (str_contains($n, 'SIBUTRAMINA')) {
+                return 'B2';
+            }
+            if (str_contains($n, 'FENOBARBITAL') || str_contains($n, 'HALOPERIDOL') || str_contains($n, 'AMITRIPTILINA') || str_contains($n, 'CARBAMAZEPINA') || str_contains($n, 'VALPROAT') || str_contains($n, 'RISPERIDONA') || str_contains($n, 'BIPERIDENO')) {
+                return 'C1';
+            }
+            return 'C1';
+        };
+
+        DB::transaction(function () use ($produtos, $grupoIds, $unidadeIds, $determinarPortaria, $now) {
             foreach ($produtos as $p) {
+                $portaria = $determinarPortaria($p['nome'], $p['grupo']);
                 DB::table('produtos')->updateOrInsert(
                     ['nome' => $p['nome']],
                     [
@@ -3506,6 +3533,7 @@ class CatalogoProdutosOficialSeeder extends Seeder
                         'marca'            => $p['marca'] ?? 'Diversas',
                         'grupo_produto_id' => $grupoIds[$p['grupo']] ?? null,
                         'unidade_medida_id'=> $unidadeIds[$p['unidade']] ?? null,
+                        'lista_portaria'   => $portaria,
                         'status'           => 'A',
                         'created_at'       => $now,
                         'updated_at'       => $now,

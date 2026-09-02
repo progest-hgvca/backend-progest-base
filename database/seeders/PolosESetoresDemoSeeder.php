@@ -6,6 +6,12 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
+/**
+ * ATENÇÃO - REGRA DE NEGÓCIO DO PROJETO:
+ * Estrutura reduzida oficial para demonstração (13 setores-chave).
+ * Mantém os polos e matriz de consumo/distribuição fiel à realidade hospitalar.
+ * NÃO ALTERAR NEM EXCLUIR estes setores ou relações em seeders/migrations.
+ */
 class PolosESetoresDemoSeeder extends Seeder
 {
     /**

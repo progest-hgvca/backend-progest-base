@@ -18,13 +18,12 @@ class DemoSystemSeeder extends Seeder
     public function run()
     {
         $this->call([
-            PolosESetoresDemoSeeder::class,     // 13 setores
-            AdminInicialSeeder::class,          // Usuário adminti
-            UsuariosEPerfisSeeder::class,       // Usuários de teste fakes
-            GruposEUnidadesMedidasSeeder::class,// Unidade de Medida + Grupos fakes
-            FornecedoresSeeder::class,          // Fornecedores fakes
-            ProdutosSeeder::class,              // Produtos catálogo antigo (pequeno)
-            DadosFakeRelatoriosSeeder::class,   // Estoques e Movimentações fakes
+            PolosESetoresDemoSeeder::class,        // 13 setores oficiais da demonstração
+            AdminInicialSeeder::class,             // Usuário adminti
+            UsuariosEPerfisSeeder::class,          // Usuários de teste fakes (Jean, Arthur, Pablo)
+            FornecedoresSeeder::class,             // Fornecedores hospitalares reais
+            CatalogoProdutosOficialSeeder::class,  // Catálogo oficial pré-processado (produtos reais da planilha)
+            DadosFakeRelatoriosSeeder::class,      // Simulação realista em todos os setores (estoques, lotes, NFs e pedidos)
         ]);
     }
 }

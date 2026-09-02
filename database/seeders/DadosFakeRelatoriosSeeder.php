@@ -18,267 +18,581 @@ use Carbon\Carbon;
 
 class DadosFakeRelatoriosSeeder extends Seeder
 {
-    private $setores = [];
-    private $fornecedores = [];
-    private $produtos = [];
-    private $usuarios = [];
+    private $setores;
+    private $fornecedores;
+    private $produtos;
+    private $usuarios;
+    private $distribuidoresMap = [];
 
     public function run()
     {
-        $this->command->info('🚀 Iniciando geração de dados fake para relatórios (baseado na estrutura existente)...');
+        $this->command->info('🚀 Iniciando geração de dados realistas hospitalares para TODOS os setores...');
 
-        $this->setores = Setores::all()->all();
-        $this->fornecedores = Fornecedor::all()->all();
-        $this->produtos = Produto::with('grupoProduto')->get()->all();
-        $this->usuarios = User::all()->all();
+        $this->setores = Setores::with('polo')->get();
+        $this->fornecedores = Fornecedor::where('status', 'A')->get();
+        $this->produtos = Produto::with('grupoProduto')->get();
+        $this->usuarios = User::all();
 
-        if (empty($this->setores) || empty($this->produtos) || empty($this->usuarios) || empty($this->fornecedores)) {
-            $this->command->error('❌ É necessário rodar os seeders anteriores (PolosESetores, Produtos, Fornecedores, Usuarios) primeiro!');
+        if ($this->setores->isEmpty() || $this->produtos->isEmpty() || $this->usuarios->isEmpty() || $this->fornecedores->isEmpty()) {
+            $this->command->error('❌ É necessário rodar os seeders anteriores (PolosESetores, Catálogo, Fornecedores, Usuários) primeiro!');
             return;
         }
 
-        DB::transaction(function () {
-            // 1. Estoque
-            $this->garantirEstoque();
-
-            // 2. Entradas
-            $this->gerarEntradas();
-
-            // 3. Estoque Lote (criado pelas entradas, mas adicionamos mais variações)
-            $this->gerarEstoqueLote();
-
-            // 4. Movimentações
-            $this->gerarMovimentacoes();
-        });
-
-        $this->command->info('✅ Todos os dados fake para relatórios foram gerados com sucesso!');
-    }
-
-    private function garantirEstoque()
-    {
-        $this->command->info('📊 Garantindo registros de estoque...');
-
-        $count = 0;
-        $setoresComEstoque = array_filter($this->setores, fn($s) => $s->estoque);
-
-        foreach ($setoresComEstoque as $setor) {
-            foreach ($this->produtos as $produto) {
-                if ($produto->grupoProduto && $produto->grupoProduto->tipo !== $setor->tipo) {
-                    continue;
-                }
-
-                Estoque::firstOrCreate(
-                    [
-                        'setor_id' => $setor->id,
-                        'produto_id' => $produto->id,
-                    ],
-                    [
-                        'quantidade_atual' => 0,
-                        'quantidade_minima' => rand(10, 50),
-                        'status_disponibilidade' => 'I',
-                    ]
-                );
-                $count++;
-            }
+        // Mapear relações pré-existentes de setor_distribuidor
+        $relacoes = DB::table('setor_distribuidor')->get();
+        foreach ($relacoes as $rel) {
+            $this->distribuidoresMap[$rel->setor_solicitante_id][] = $rel->setor_distribuidor_id;
         }
 
-        $this->command->info('  ✓ ' . $count . ' registros de estoque garantidos');
+        DB::transaction(function () {
+            // 1. Entradas por Nota Fiscal e Estoques dos setores com estoque
+            $this->gerarEntradasEEstoques();
+
+            // 2. Lotes e Validades (vigentes, próximos ao vencimento e vencidos)
+            $this->gerarEstoqueLotesEValidades();
+
+            // 3. Movimentações clínicas e administrativas cobrindo TODOS os setores
+            $this->gerarMovimentacoesCompletas();
+        });
+
+        $this->command->info('✅ Simulação hospitalar concluída com sucesso! Todos os setores foram populados.');
     }
 
-    private function gerarEntradas()
+    /**
+     * 1. Gera Notas Fiscais e saldos de estoque balanceados para setores com estoque.
+     */
+    private function gerarEntradasEEstoques()
     {
-        $this->command->info('📥 Gerando entradas de estoque (mínimo necessário)...');
+        $this->command->info('📥 [1/3] Gerando Entradas de NF e Estoque para setores gerenciadores...');
 
-        $setoresComEstoque = array_filter($this->setores, fn($s) => $s->estoque);
+        $setoresComEstoque = $this->setores->where('estoque', true);
 
-        if (empty($setoresComEstoque)) {
+        if ($setoresComEstoque->isEmpty()) {
             $this->command->warn('⚠️ Nenhum setor com estoque habilitado encontrado.');
             return;
         }
 
-        for ($i = 1; $i <= 10; $i++) {
-            $setor = $setoresComEstoque[array_rand($setoresComEstoque)];
-            $fornecedor = $this->fornecedores[array_rand($this->fornecedores)];
-            $dataEntrada = Carbon::now()->subDays(rand(0, 30));
+        $now = Carbon::now();
+        $anoAtual = $now->year;
+        $nfSeq = 1000;
 
-            $entrada = Entrada::create([
-                'nota_fiscal' => 'NF-FAKE-' . date('Y') . '-' . str_pad($i, 6, '0', STR_PAD_LEFT),
-                'setor_id' => $setor->id,
-                'fornecedor_id' => $fornecedor->id,
-                'created_at' => $dataEntrada,
-                'updated_at' => $dataEntrada,
-            ]);
+        foreach ($setoresComEstoque as $setor) {
+            $tipoSetor = $setor->tipo ?? 'Ambos';
 
-            $numItens = rand(1, 3);
-            $produtosCompativeis = array_filter($this->produtos, fn($p) => $p->grupoProduto && $p->grupoProduto->tipo === $setor->tipo);
+            // Produtos compatíveis com o tipo do setor
+            $produtosCompativeis = $this->produtos->filter(function ($p) use ($tipoSetor) {
+                if ($tipoSetor === 'Ambos') return true;
+                $grupoTipo = $p->grupoProduto?->tipo ?? 'Medicamento';
+                return $grupoTipo === $tipoSetor;
+            })->values();
 
-            for ($j = 0; $j < $numItens; $j++) {
-                if (empty($produtosCompativeis)) continue;
+            if ($produtosCompativeis->isEmpty()) {
+                $produtosCompativeis = $this->produtos;
+            }
 
-                $produto = $produtosCompativeis[array_rand($produtosCompativeis)];
-                $quantidade = rand(50, 200);
-                $valorUnitario = round(rand(250, 10000) / 100, 2);
+            // Selecionar amostra rica de 30 a 50 produtos para ter estoque neste setor
+            $qtdProdutosEstoque = min(45, $produtosCompativeis->count());
+            $produtosSelecionados = $produtosCompativeis->random($qtdProdutosEstoque);
 
-                ItensEntrada::create([
-                    'entrada_id'     => $entrada->id,
-                    'produto_id'     => $produto->id,
-                    'quantidade'     => $quantidade,
-                    'valor_unitario' => $valorUnitario,
-                    'lote'           => 'L' . date('Y') . '-' . str_pad(rand(1, 999), 3, '0', STR_PAD_LEFT),
-                    'data_vencimento'=> $dataEntrada->copy()->addMonths(rand(12, 36)),
-                    'created_at'     => $dataEntrada,
-                    'updated_at'     => $dataEntrada,
+            // Garantir que medicamentos controlados estejam presentes na CAF e Farmácia de Dispensação
+            if (str_contains(strtoupper($setor->nome), 'CAF') || str_contains(strtoupper($setor->nome), 'DISPENSAÇÃO') || str_contains(strtoupper($setor->nome), 'CENTRAL')) {
+                $controlados = $this->produtos->filter(fn($p) => $p->grupoProduto?->controlado)->take(6);
+                $produtosSelecionados = $produtosSelecionados->merge($controlados)->unique('id');
+            }
+
+            // Criar 6 a 8 Notas Fiscais distribuídas ao longo dos últimos 90 dias
+            $diasHistorico = [85, 70, 56, 42, 28, 14, 3];
+
+            foreach ($diasHistorico as $diasAtras) {
+                $dataEntrada = $now->copy()->subDays($diasAtras)->setTime(rand(8, 17), rand(10, 50));
+                $nfSeq += rand(3, 12);
+                $nfNumero = 'NF-' . str_pad($nfSeq, 6, '0', STR_PAD_LEFT) . '/' . $anoAtual;
+
+                // Selecionar fornecedor adequado
+                $fornecedor = $this->selecionarFornecedorApropriado($tipoSetor);
+
+                $entrada = Entrada::create([
+                    'nota_fiscal'   => $nfNumero,
+                    'setor_id'      => $setor->id,
+                    'fornecedor_id' => $fornecedor->id,
+                    'created_at'    => $dataEntrada,
+                    'updated_at'    => $dataEntrada,
                 ]);
 
-                $estoque = Estoque::where('setor_id', $setor->id)
-                    ->where('produto_id', $produto->id)
-                    ->first();
+                // 3 a 6 itens por Nota Fiscal
+                $itensQtd = min(rand(3, 6), $produtosSelecionados->count());
+                $itensAmostra = $produtosSelecionados->random($itensQtd);
 
-                if ($estoque) {
-                    $estoque->quantidade_atual += $quantidade;
-                    $estoque->status_disponibilidade = 'D';
-                    $estoque->save();
+                foreach ($itensAmostra as $prod) {
+                    $quantidadeNF = rand(80, 400);
+                    $valorUnitario = $this->calcularPrecoRealista($prod);
+                    $codLote = 'L' . substr($anoAtual, 2) . str_pad(rand(101, 999), 3, '0', STR_PAD_LEFT);
+                    $dataVenc = $dataEntrada->copy()->addMonths(rand(14, 34))->toDateString();
+                    $dataFabr = $dataEntrada->copy()->subMonths(rand(1, 3))->toDateString();
+
+                    ItensEntrada::create([
+                        'entrada_id'      => $entrada->id,
+                        'produto_id'      => $prod->id,
+                        'quantidade'      => $quantidadeNF,
+                        'valor_unitario'  => $valorUnitario,
+                        'lote'            => $codLote,
+                        'data_fabricacao' => $dataFabr,
+                        'data_vencimento' => $dataVenc,
+                        'created_at'      => $dataEntrada,
+                        'updated_at'      => $dataEntrada,
+                    ]);
                 }
             }
+
+            // Criar e balancear registros de Estoque agregado para o setor
+            foreach ($produtosSelecionados as $idx => $prod) {
+                $qtdMinima = rand(25, 60);
+
+                // Variar níveis de estoque:
+                // - ~15% dos itens abaixo do mínimo (críticos) para gerar alertas
+                // - ~5% zerados (falta)
+                // - ~80% saudáveis com bom saldo
+                if ($idx % 7 === 0) {
+                    // Abaixo do mínimo
+                    $qtdAtual = rand(3, $qtdMinima - 5);
+                    $status = 'D';
+                } elseif ($idx % 19 === 0) {
+                    // Em falta / zerado
+                    $qtdAtual = 0;
+                    $status = 'I';
+                } else {
+                    // Saudável
+                    $qtdAtual = rand(100, 500);
+                    $status = 'D';
+                }
+
+                Estoque::updateOrCreate(
+                    [
+                        'setor_id'   => $setor->id,
+                        'produto_id' => $prod->id,
+                    ],
+                    [
+                        'quantidade_atual'       => $qtdAtual,
+                        'quantidade_minima'      => $qtdMinima,
+                        'status_disponibilidade' => $status,
+                        'created_at'             => $now->copy()->subDays(60),
+                        'updated_at'             => $now,
+                    ]
+                );
+            }
         }
-        $this->command->info("  ✓ 10 entradas criadas");
+
+        $this->command->info('  ✓ Entradas de NF e estoques criados.');
     }
 
-    private function gerarEstoqueLote()
+    /**
+     * 2. Gera lotes detalhados com validades diversas (normais, a vencer em 30-60 dias e vencidos).
+     */
+    private function gerarEstoqueLotesEValidades()
     {
-        $this->command->info('📦 Gerando lotes de estoque adicionais...');
+        $this->command->info('📦 [2/3] Gerando EstoqueLote (vigentes, alerta de vencimento e barreira FIFO)...');
 
-        $count = 0;
-        $estoques = Estoque::where('quantidade_atual', '>', 0)->limit(50)->get();
+        $estoques = Estoque::where('quantidade_atual', '>', 0)->get();
+        $now = Carbon::now();
+        $anoAtual = $now->year;
+        $loteCount = 0;
 
-        foreach ($estoques as $estoque) {
-            $numLotes = rand(1, 3);
+        foreach ($estoques as $idx => $estoque) {
+            $saldoRestante = (float) $estoque->quantidade_atual;
 
-            for ($i = 0; $i < $numLotes; $i++) {
-                $dataVencimento = Carbon::now()->addMonths(rand(6, 24));
+            // 1. Lote de Vencimento Próximo (para ~15% dos produtos) - expira em 20 a 50 dias
+            if ($idx % 6 === 0 && $saldoRestante > 15) {
+                $qtdLoteAlerta = rand(8, 20);
+                $dataVencAlerta = $now->copy()->addDays(rand(20, 50))->toDateString();
+                $loteCod = 'L' . substr($anoAtual, 2) . '-ALERT-' . str_pad(rand(10, 99), 2, '0', STR_PAD_LEFT);
 
-                EstoqueLote::firstOrCreate(
+                EstoqueLote::updateOrCreate(
                     [
                         'setor_id'   => $estoque->setor_id,
                         'produto_id' => $estoque->produto_id,
-                        'lote'       => 'L' . date('Y') . '-' . str_pad(rand(1, 999), 3, '0', STR_PAD_LEFT),
+                        'lote'       => $loteCod,
                     ],
                     [
-                        'quantidade_disponivel' => rand(10, 200),
-                        'data_fabricacao'       => null, // opcional
-                        'data_vencimento'       => $dataVencimento,
+                        'quantidade_disponivel' => $qtdLoteAlerta,
+                        'data_fabricacao'       => $now->copy()->subMonths(18)->toDateString(),
+                        'data_vencimento'       => $dataVencAlerta,
+                        'created_at'            => $now->copy()->subMonths(6),
+                        'updated_at'            => $now,
                     ]
                 );
-                $count++;
+
+                $saldoRestante -= $qtdLoteAlerta;
+                $loteCount++;
+            }
+
+            // 2. Lotes principais vigentes (longo prazo: 12 a 30 meses)
+            $numLotes = $saldoRestante > 150 ? 2 : 1;
+            for ($l = 1; $l <= $numLotes; $l++) {
+                if ($saldoRestante <= 0) break;
+
+                $qtdDesteLote = ($l === $numLotes) ? $saldoRestante : round($saldoRestante * 0.6);
+                $dataVenc = $now->copy()->addMonths(rand(12, 32))->toDateString();
+                $loteCod = 'L' . substr($anoAtual, 2) . '-' . str_pad(rand(100, 999), 3, '0', STR_PAD_LEFT);
+
+                EstoqueLote::updateOrCreate(
+                    [
+                        'setor_id'   => $estoque->setor_id,
+                        'produto_id' => $estoque->produto_id,
+                        'lote'       => $loteCod,
+                    ],
+                    [
+                        'quantidade_disponivel' => $qtdDesteLote,
+                        'data_fabricacao'       => $now->copy()->subMonths(rand(2, 6))->toDateString(),
+                        'data_vencimento'       => $dataVenc,
+                        'created_at'            => $now->copy()->subMonths(3),
+                        'updated_at'            => $now,
+                    ]
+                );
+
+                $saldoRestante -= $qtdDesteLote;
+                $loteCount++;
+            }
+
+            // 3. Lote Vencido isolado (para ~8% dos produtos) - testa barreira de segurança FIFO
+            if ($idx % 12 === 0) {
+                $dataVencPassada = $now->copy()->subDays(rand(10, 45))->toDateString();
+                $loteVencCod = 'L' . substr($anoAtual - 2, 2) . '-VENC-' . str_pad(rand(10, 99), 2, '0', STR_PAD_LEFT);
+
+                EstoqueLote::updateOrCreate(
+                    [
+                        'setor_id'   => $estoque->setor_id,
+                        'produto_id' => $estoque->produto_id,
+                        'lote'       => $loteVencCod,
+                    ],
+                    [
+                        'quantidade_disponivel' => rand(5, 15),
+                        'data_fabricacao'       => $now->copy()->subMonths(30)->toDateString(),
+                        'data_vencimento'       => $dataVencPassada,
+                        'created_at'            => $now->copy()->subMonths(12),
+                        'updated_at'            => $now,
+                    ]
+                );
+                $loteCount++;
             }
         }
 
-        $this->command->info('  ✓ ' . $count . ' lotes de estoque criados');
+        $this->command->info("  ✓ {$loteCount} lotes de estoque gerados.");
     }
 
-    private function gerarMovimentacoes()
+    /**
+     * 3. Gera movimentações completas para TODOS os setores do hospital.
+     */
+    private function gerarMovimentacoesCompletas()
     {
-        $this->command->info('🔄 Gerando cenários de movimentações para demonstração...');
+        $this->command->info('🔄 [3/3] Gerando Requisições e Movimentações para TODOS os setores...');
 
-        $setoresDistribuidores = array_filter($this->setores, function($s) {
-            $nome = strtolower($s->nome);
-            return str_contains($nome, 'farmácia central') || str_contains($nome, 'farmacia central') || str_contains($nome, 'almoxarifado');
-        });
+        $now = Carbon::now();
+        $userSolicitante = $this->usuarios->firstWhere('email', 'jeansolicitante@gmail.com') ?? $this->usuarios->first();
+        $userAlmoxarife  = $this->usuarios->firstWhere('email', 'arthuralmoxarife@gmail.com') ?? $this->usuarios->first();
+        $userAdmin       = $this->usuarios->firstWhere('email', 'pabloadmin@gmail.com') ?? $this->usuarios->first();
 
-        $setoresConsumidores = array_filter($this->setores, function($s) {
-            $nome = strtolower($s->nome);
-            return !str_contains($nome, 'farmácia central') && !str_contains($nome, 'farmacia central') && !str_contains($nome, 'almoxarifado');
-        });
+        $farmaciasComEstoque = $this->setores->where('estoque', true)->values();
+        $cafHGVC = $farmaciasComEstoque->first(fn($s) => str_contains(strtoupper($s->nome), 'CAF')) ?? $farmaciasComEstoque->first();
 
-        if (empty($setoresConsumidores) || empty($setoresDistribuidores)) {
-            $this->command->warn('⚠️ Não há setores consumidores ou distribuidores suficientes para gerar movimentações.');
-            return;
-        }
+        $movimentacoesCriadas = 0;
 
-        $setorOrigem  = array_values($setoresConsumidores)[0];
-        $setorDestino = array_values($setoresDistribuidores)[0];
-        $usuario      = $this->usuarios[array_rand($this->usuarios)];
-        
-        // Em vez de pegar qualquer produto, pegar um que efetivamente tenha estoque no distribuidor!
-        $estoqueDestino = Estoque::where('setor_id', $setorDestino->id)
-            ->where('quantidade_atual', '>=', 50)
-            ->first();
+        // Para CADA setor do sistema (garantindo que qualquer setor selecionado tenha dados)
+        foreach ($this->setores as $setor) {
+            $isDistribuidor = $setor->estoque;
 
-        // Se não achar nenhum com saldo, usa qualquer um (e o seeder terá que criar saldo para ele)
-        $produto_id = $estoqueDestino ? $estoqueDestino->produto_id : $this->produtos[array_rand($this->produtos)]->id;
+            // Encontrar o distribuidor autorizado para este setor
+            $distribuidorId = null;
+            if (!empty($this->distribuidoresMap[$setor->id])) {
+                $distribuidorId = $this->distribuidoresMap[$setor->id][0];
+            }
 
-        // Se não tinha estoque suficiente, força a criação ou atualização do saldo para evitar o erro de trigger negativo
-        if (!$estoqueDestino) {
-            $estoqueDestino = Estoque::firstOrCreate(
-                ['setor_id' => $setorDestino->id, 'produto_id' => $produto_id],
-                ['quantidade_minima' => 10, 'quantidade_atual' => 100, 'status_disponibilidade' => 'D']
-            );
-            
-            // Caso ele já existisse (mas com saldo < 50, motivo de não ter sido pego na query anterior), forçamos o valor para 100
-            if ($estoqueDestino->quantidade_atual < 50) {
-                $estoqueDestino->quantidade_atual = 100;
-                $estoqueDestino->status_disponibilidade = 'D';
-                $estoqueDestino->save();
+            // Fallback para farmácia do mesmo polo ou CAF
+            if (!$distribuidorId) {
+                $farmaciaMesmoPolo = $farmaciasComEstoque->firstWhere('polo_id', $setor->polo_id);
+                $distribuidorId = $farmaciaMesmoPolo ? $farmaciaMesmoPolo->id : $cafHGVC->id;
+            }
+
+            $distribuidor = $this->setores->firstWhere('id', $distribuidorId) ?? $cafHGVC;
+
+            // Se o próprio setor for a CAF, seu fornecedor para transferências é outro polo ou dispensação
+            if ($setor->id === $distribuidor->id) {
+                $outroDistribuidor = $farmaciasComEstoque->firstWhere('id', '!=', $setor->id);
+                if ($outroDistribuidor) {
+                    $distribuidor = $outroDistribuidor;
+                }
+            }
+
+            // Produtos compatíveis para movimentação
+            $tipoSetor = $setor->tipo ?? 'Ambos';
+            $produtosMov = $this->produtos->filter(function ($p) use ($tipoSetor) {
+                if ($tipoSetor === 'Ambos') return true;
+                $grupoTipo = $p->grupoProduto?->tipo ?? 'Medicamento';
+                return $grupoTipo === $tipoSetor;
+            })->values();
+
+            if ($produtosMov->isEmpty()) {
+                $produtosMov = $this->produtos;
+            }
+
+            // Obter produtos que tenham estoque real no distribuidor
+            $estoquesDistribuidor = Estoque::where('setor_id', $distribuidor->id)
+                ->where('quantidade_atual', '>=', 30)
+                ->get();
+
+            $produtosComSaldo = $produtosMov->whereIn('id', $estoquesDistribuidor->pluck('produto_id'))->values();
+            if ($produtosComSaldo->isEmpty()) {
+                $produtosComSaldo = $produtosMov->take(15);
+            }
+
+            // Definir os cenários de uso real para este setor
+            $cenarios = [
+                // 1. Rascunho ('C'): aberto pelo solicitante para conferência
+                [
+                    'status'     => 'C',
+                    'tipo'       => $isDistribuidor ? 'T' : 'S',
+                    'diasAtras'  => 0,
+                    'obs'        => 'Rascunho de reposição setorial - aguardando validação do enfermeiro-chefe.',
+                    'aprovador'  => null,
+                    'liberacao'  => 'nenhuma',
+                ],
+                // 2. Pendente ('P'): aguardando análise do almoxarife/farmácia
+                [
+                    'status'     => 'P',
+                    'tipo'       => $isDistribuidor ? 'T' : 'S',
+                    'diasAtras'  => 1,
+                    'obs'        => 'Solicitação de reposição regular para escala do plantão.',
+                    'aprovador'  => null,
+                    'liberacao'  => 'nenhuma',
+                ],
+                // 3. Aprovada Total ('A'): entregue e conferida
+                [
+                    'status'     => 'A',
+                    'tipo'       => $isDistribuidor ? 'T' : 'S',
+                    'diasAtras'  => 6,
+                    'obs'        => 'Pedido conferido e liberado integralmente pela farmácia distribuidora.',
+                    'aprovador'  => $userAlmoxarife->id,
+                    'liberacao'  => 'total',
+                ],
+                // 4. Aprovada Parcial ('A'): liberação fracionada por cota
+                [
+                    'status'     => 'A',
+                    'tipo'       => $isDistribuidor ? 'T' : 'S',
+                    'diasAtras'  => 14,
+                    'obs'        => 'Liberado quantitativo para 48h de consumo (cota racionada pelo distribuidor).',
+                    'aprovador'  => $userAlmoxarife->id,
+                    'liberacao'  => 'parcial',
+                ],
+                // 5. Rejeitada ('R'): justificativa clínica/gestão
+                [
+                    'status'     => 'R',
+                    'tipo'       => $isDistribuidor ? 'T' : 'S',
+                    'diasAtras'  => 20,
+                    'obs'        => 'Pedido reprovado: solicitação duplicada identificada para o mesmo período/leito.',
+                    'aprovador'  => $userAlmoxarife->id,
+                    'liberacao'  => 'nenhuma',
+                ],
+                // 6. Cancelada ('X'): solicitante desistiu
+                [
+                    'status'     => 'X',
+                    'tipo'       => $isDistribuidor ? 'T' : 'S',
+                    'diasAtras'  => 26,
+                    'obs'        => 'Cancelado pelo solicitante: prescrição suspensa após reavaliação do paciente.',
+                    'aprovador'  => null,
+                    'liberacao'  => 'nenhuma',
+                ],
+            ];
+
+            foreach ($cenarios as $c) {
+                $dataMov = $now->copy()->subDays($c['diasAtras'])->setTime(rand(8, 18), rand(5, 55));
+
+                $mov = Movimentacao::create([
+                    'usuario_id'           => $userSolicitante->id,
+                    'setor_origem_id'      => $distribuidor->id,
+                    'setor_destino_id'     => $setor->id,
+                    'tipo'                 => $c['tipo'],
+                    'data_hora'            => $dataMov,
+                    'observacao'           => $c['obs'],
+                    'status_solicitacao'   => $c['status'],
+                    'aprovador_usuario_id' => $c['aprovador'],
+                    'created_at'           => $dataMov,
+                    'updated_at'           => $dataMov,
+                ]);
+
+                // 2 a 4 itens por movimentação
+                $numItens = min(rand(2, 4), $produtosComSaldo->count());
+                $itensEscolhidos = $produtosComSaldo->random($numItens);
+
+                foreach ($itensEscolhidos as $prod) {
+                    $qtdSolicitada = rand(10, 35);
+                    $qtdLiberada = 0;
+                    $loteJson = null;
+
+                    if ($c['liberacao'] === 'total') {
+                        $qtdLiberada = $qtdSolicitada;
+                    } elseif ($c['liberacao'] === 'parcial') {
+                        $qtdLiberada = max(1, $qtdSolicitada - rand(5, 12));
+                    }
+
+                    // Se houve liberação de estoque
+                    if ($qtdLiberada > 0) {
+                        $loteEstoque = EstoqueLote::where('setor_id', $distribuidor->id)
+                            ->where('produto_id', $prod->id)
+                            ->where('quantidade_disponivel', '>', 0)
+                            ->whereDate('data_vencimento', '>=', $now->toDateString())
+                            ->first();
+
+                        $codLoteUsado = $loteEstoque ? $loteEstoque->lote : 'L' . substr($now->year, 2) . '-' . rand(200, 800);
+                        $vencLoteUsado = $loteEstoque ? $loteEstoque->data_vencimento : $now->copy()->addMonths(18)->toDateString();
+
+                        $loteJson = json_encode([
+                            [
+                                'lote'            => $codLoteUsado,
+                                'data_vencimento' => $vencLoteUsado,
+                                'qtd'             => $qtdLiberada,
+                            ]
+                        ]);
+
+                        // Baixar do distribuidor com segurança de não negativar
+                        $estDist = Estoque::where('setor_id', $distribuidor->id)->where('produto_id', $prod->id)->first();
+                        if ($estDist) {
+                            if ($estDist->quantidade_atual < $qtdLiberada) {
+                                $estDist->quantidade_atual += ($qtdLiberada + 50);
+                            }
+                            $estDist->quantidade_atual -= $qtdLiberada;
+                            $estDist->save();
+                        }
+
+                        // Se o setor solicitante também gerencia estoque (ex: transferência entre farmácias), incrementa
+                        if ($setor->estoque) {
+                            $estDest = Estoque::firstOrCreate(
+                                ['setor_id' => $setor->id, 'produto_id' => $prod->id],
+                                ['quantidade_minima' => 20, 'quantidade_atual' => 0, 'status_disponibilidade' => 'D']
+                            );
+                            $estDest->quantidade_atual += $qtdLiberada;
+                            $estDest->status_disponibilidade = 'D';
+                            $estDest->save();
+                        }
+                    }
+
+                    ItemMovimentacao::create([
+                        'movimentacao_id'       => $mov->id,
+                        'produto_id'            => $prod->id,
+                        'quantidade_solicitada' => $qtdSolicitada,
+                        'quantidade_liberada'   => $qtdLiberada,
+                        'lote'                  => $loteJson,
+                        'created_at'            => $dataMov,
+                        'updated_at'            => $dataMov,
+                    ]);
+                }
+
+                $movimentacoesCriadas++;
             }
         }
 
-        $cenarios = [
-            ['status' => 'P', 'liberada' => 'nenhum', 'obs' => 'Movimentação Pendente (Aguardando Distribuidor)'],
-            ['status' => 'A', 'liberada' => 'total', 'obs' => 'Movimentação Aprovada (Liberação Total)'],
-            ['status' => 'A', 'liberada' => 'parcial', 'obs' => 'Movimentação Aprovada Parcial (Liberação Menor)'],
-            ['status' => 'R', 'liberada' => 'zero', 'obs' => 'Movimentação Rejeitada (Recusa Integral)'],
-            ['status' => 'X', 'liberada' => 'nenhum', 'obs' => 'Movimentação Cancelada (Pelo Solicitante)'],
-            ['status' => 'C', 'liberada' => 'nenhum', 'obs' => 'Rascunho (Não enviada)'],
-        ];
+        // Cenário adicional específico para Medicamentos Controlados em setores críticos (UTIs e Centro Cirúrgico)
+        $this->gerarMovimentacoesControladas($cafHGVC, $userSolicitante, $userAlmoxarife, $now);
 
-        foreach ($cenarios as $index => $cenario) {
-            $dataMov = Carbon::now()->subDays(6 - $index);
+        $this->command->info("  ✓ {$movimentacoesCriadas} movimentações geradas abrangendo todos os setores.");
+    }
 
-            $movimentacao = Movimentacao::create([
-                'usuario_id'          => $usuario->id,
-                'setor_origem_id'     => $setorOrigem->id,
-                'setor_destino_id'    => $setorDestino->id,
-                'tipo'                => 'S', // Saída / Solicitação
-                'data_hora'           => $dataMov,
-                'status_solicitacao'  => $cenario['status'],
-                'observacao'          => $cenario['obs'],
-                'created_at'          => $dataMov,
-                'updated_at'          => $dataMov,
+    /**
+     * Gera movimentações de medicamentos controlados para alimentar o relatório da Portaria 344/98.
+     */
+    private function gerarMovimentacoesControladas($distribuidor, $solicitante, $almoxarife, $now)
+    {
+        $produtosControlados = $this->produtos->filter(fn($p) => $p->grupoProduto?->controlado)->values();
+        if ($produtosControlados->isEmpty()) return;
+
+        // Setores hospitalares críticos que consomem medicamentos controlados
+        $setoresCriticos = $this->setores->filter(function ($s) {
+            $n = strtoupper($s->nome);
+            return str_contains($n, 'UTI') || str_contains($n, 'CIRÚRGICO') || str_contains($n, 'VERMELHA') || str_contains($n, 'TRAUMA');
+        })->take(4);
+
+        foreach ($setoresCriticos as $setor) {
+            $dataMov = $now->copy()->subDays(rand(2, 18))->setTime(rand(9, 16), rand(0, 50));
+
+            $mov = Movimentacao::create([
+                'usuario_id'           => $solicitante->id,
+                'setor_origem_id'      => $distribuidor->id,
+                'setor_destino_id'     => $setor->id,
+                'tipo'                 => 'S',
+                'data_hora'            => $dataMov,
+                'observacao'           => 'Requisição especial de sedativos e opioides (Portaria 344/98) com receituário retido.',
+                'status_solicitacao'   => 'A',
+                'aprovador_usuario_id' => $almoxarife->id,
+                'created_at'           => $dataMov,
+                'updated_at'           => $dataMov,
             ]);
 
-            $qtdSolicitada = rand(10, 30);
-            $qtdLiberada = 0;
-
-            if ($cenario['liberada'] === 'total') $qtdLiberada = $qtdSolicitada;
-            if ($cenario['liberada'] === 'parcial') $qtdLiberada = rand(1, $qtdSolicitada - 1);
-
-            ItemMovimentacao::create([
-                'movimentacao_id'       => $movimentacao->id,
-                'produto_id'            => $produto_id,
-                'quantidade_solicitada' => $qtdSolicitada,
-                'quantidade_liberada'   => $qtdLiberada,
-                'lote'                  => $cenario['liberada'] && $qtdLiberada > 0 ? 'L' . date('Y') . '-' . str_pad(rand(1, 999), 3, '0', STR_PAD_LEFT) : null,
-                'created_at'            => $dataMov,
-                'updated_at'            => $dataMov,
-            ]);
-
-            // REGRA DE NEGÓCIO FALTANTE: Se aprovado, abater do destino e somar na origem
-            if ($qtdLiberada > 0) {
-                // Abater do distribuidor (setor destino da solicitação)
-                $estoqueDestino->quantidade_atual -= $qtdLiberada;
-                $estoqueDestino->save();
-
-                // Somar no consumidor (setor origem da solicitação)
-                $estoqueOrigem = Estoque::firstOrCreate(
-                    ['setor_id' => $setorOrigem->id, 'produto_id' => $produto_id],
-                    ['quantidade_minima' => 5, 'quantidade_atual' => 0, 'status_disponibilidade' => 'I']
-                );
-                $estoqueOrigem->quantidade_atual += $qtdLiberada;
-                $estoqueOrigem->status_disponibilidade = 'D';
-                $estoqueOrigem->save();
+            $itensCtrl = $produtosControlados->random(min(3, $produtosControlados->count()));
+            foreach ($itensCtrl as $ctrl) {
+                $qtd = rand(5, 15);
+                ItemMovimentacao::create([
+                    'movimentacao_id'       => $mov->id,
+                    'produto_id'            => $ctrl->id,
+                    'quantidade_solicitada' => $qtd,
+                    'quantidade_liberada'   => $qtd,
+                    'lote'                  => json_encode([[
+                        'lote'            => 'L' . substr($now->year, 2) . '-CTRL-' . rand(10, 99),
+                        'data_vencimento' => $now->copy()->addMonths(20)->toDateString(),
+                        'qtd'             => $qtd
+                    ]]),
+                    'created_at'            => $dataMov,
+                    'updated_at'            => $dataMov,
+                ]);
             }
         }
+    }
 
-        $this->command->info("  ✓ 6 cenários de movimentação criados com atualização de saldo real.");
+    /**
+     * Auxiliar: seleciona fornecedor apropriado ao tipo de material/medicamento.
+     */
+    private function selecionarFornecedorApropriado(string $tipoSetor): Fornecedor
+    {
+        if ($tipoSetor === 'Material') {
+            $fornecedor = $this->fornecedores->first(function ($f) {
+                $n = strtoupper($f->razao_social_nome);
+                return str_contains($n, 'CREMER') || str_contains($n, 'BD') || str_contains($n, 'MEDIX') || str_contains($n, 'SUPRIMENTOS');
+            });
+            return $fornecedor ?? $this->fornecedores->random();
+        }
+
+        $fornecedor = $this->fornecedores->first(function ($f) {
+            $n = strtoupper($f->razao_social_nome);
+            return str_contains($n, 'CRISTÁLIA') || str_contains($n, 'EUROFARMA') || str_contains($n, 'FRESENIUS') || str_contains($n, 'ELFA') || str_contains($n, 'SANTA CRUZ');
+        });
+
+        return $fornecedor ?? $this->fornecedores->random();
+    }
+
+    /**
+     * Auxiliar: calcula preço unitário realista de acordo com grupo e tipo do produto.
+     */
+    private function calcularPrecoRealista(Produto $produto): float
+    {
+        $grupoNome = strtoupper($produto->grupoProduto?->nome ?? '');
+
+        if (str_contains($grupoNome, 'CONTROLADO')) {
+            return round(rand(550, 4800) / 100, 2); // R$ 5,50 a R$ 48,00
+        }
+        if (str_contains($grupoNome, 'ANTIBIÓTICO')) {
+            return round(rand(850, 6500) / 100, 2); // R$ 8,50 a R$ 65,00
+        }
+        if (str_contains($grupoNome, 'INJETÁVEL') || str_contains($grupoNome, 'INJETAVEIS')) {
+            return round(rand(320, 2800) / 100, 2); // R$ 3,20 a R$ 28,00
+        }
+        if (str_contains($grupoNome, 'SOLUÇ') || str_contains($grupoNome, 'SORO')) {
+            return round(rand(450, 1600) / 100, 2); // R$ 4,50 a R$ 16,00
+        }
+        if (str_contains($grupoNome, 'LIMPEZA') || str_contains($grupoNome, 'HIGIENE')) {
+            return round(rand(350, 2400) / 100, 2); // R$ 3,50 a R$ 24,00
+        }
+        if (str_contains($grupoNome, 'EXPEDIENTE')) {
+            return round(rand(120, 3200) / 100, 2); // R$ 1,20 a R$ 32,00
+        }
+
+        // Medicamentos orais e materiais comuns
+        return round(rand(35, 1250) / 100, 2); // R$ 0,35 a R$ 12,50
     }
 }

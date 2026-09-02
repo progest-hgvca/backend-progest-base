@@ -7,6 +7,11 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Carbon\Carbon;
 
+/**
+ * ATENÇÃO - REGRA DE NEGÓCIO DO PROJETO:
+ * Usuário adminti@gmail.com (Super Admin padrão do sistema).
+ * NÃO ALTERAR NEM EXCLUIR em seeders/migrations.
+ */
 class AdminInicialSeeder extends Seeder
 {
     /**
@@ -16,11 +21,24 @@ class AdminInicialSeeder extends Seeder
     {
         $now = Carbon::now();
 
-        // 1. Criar Usuário Admin TI
-        DB::table('users')->updateOrInsert(
-            ['email' => 'adminti@gmail.com'],
-            [
+        // 1. Criar ou Atualizar Usuário Admin TI
+        $userExistente = DB::table('users')->where('email', 'adminti@gmail.com')->orWhere('cpf', '00000000000')->first();
+        if ($userExistente) {
+            DB::table('users')->where('id', $userExistente->id)->update([
                 'name'            => 'ADMIN TI',
+                'email'           => 'adminti@gmail.com',
+                'password'        => Hash::make('adminti'),
+                'cpf'             => '00000000000',
+                'telefone'        => '00000000000',
+                'data_nascimento' => '1990-01-01',
+                'status'          => 'A',
+                'regime_contratacao_id' => 1,
+                'updated_at'      => $now,
+            ]);
+        } else {
+            DB::table('users')->insert([
+                'name'            => 'ADMIN TI',
+                'email'           => 'adminti@gmail.com',
                 'password'        => Hash::make('adminti'),
                 'cpf'             => '00000000000',
                 'telefone'        => '00000000000',
@@ -29,8 +47,8 @@ class AdminInicialSeeder extends Seeder
                 'regime_contratacao_id' => 1,
                 'created_at'      => $now,
                 'updated_at'      => $now,
-            ]
-        );
+            ]);
+        }
 
         $admin = DB::table('users')->where('email', 'adminti@gmail.com')->first();
         if (!$admin) return;

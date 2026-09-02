@@ -6,11 +6,17 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
+/**
+ * ATENÇÃO - REGRA DE NEGÓCIO DO PROJETO:
+ * A estrutura de Polos, Setores e Matriz de Distribuição/Consumo abaixo reflete
+ * a operação real dos hospitais atendidos pelo ProGest (HGVC, HAP, HCS, UPA).
+ * NÃO ALTERAR NEM EXCLUIR estes setores ou relações em seeders/migrations.
+ */
 class PolosESetoresFullSeeder extends Seeder
 {
     /**
      * Run the database seeds.
-     * Estrutura completa (63 setores)
+     * Estrutura oficial completa (63 setores)
      */
     public function run()
     {
