@@ -404,15 +404,39 @@ class DadosFakeRelatoriosSeeder extends Seeder
                     'aprovador'  => null,
                     'liberacao'  => 'nenhuma',
                 ],
+                // 7. Devolução Aprovada ('A', 'D'): sobra clínica devolvida ao distribuidor e aceita
+                [
+                    'status'        => 'A',
+                    'tipo'          => 'D',
+                    'is_devolucao'  => true,
+                    'diasAtras'     => 3,
+                    'obs'           => 'Devolução de medicamentos não administrados no leito após alta hospitalar do paciente.',
+                    'aprovador'     => $userAlmoxarife->id,
+                    'liberacao'     => 'total',
+                ],
+                // 8. Devolução Pendente ('P', 'D'): enviada pelo setor e aguardando inspeção
+                [
+                    'status'        => 'P',
+                    'tipo'          => 'D',
+                    'is_devolucao'  => true,
+                    'diasAtras'     => 1,
+                    'obs'           => 'Devolução de sobras de procedimento cirúrgico - aguardando conferência física na farmácia.',
+                    'aprovador'     => null,
+                    'liberacao'     => 'nenhuma',
+                ],
             ];
 
             foreach ($cenarios as $c) {
                 $dataMov = $now->copy()->subDays($c['diasAtras'])->setTime(rand(8, 18), rand(5, 55));
+                $isDevolucao = !empty($c['is_devolucao']);
+
+                $origemId = $isDevolucao ? $setor->id : $distribuidor->id;
+                $destinoId = $isDevolucao ? $distribuidor->id : $setor->id;
 
                 $mov = Movimentacao::create([
                     'usuario_id'           => $userSolicitante->id,
-                    'setor_origem_id'      => $distribuidor->id,
-                    'setor_destino_id'     => $setor->id,
+                    'setor_origem_id'      => $origemId,
+                    'setor_destino_id'     => $destinoId,
                     'tipo'                 => $c['tipo'],
                     'data_hora'            => $dataMov,
                     'observacao'           => $c['obs'],
@@ -456,25 +480,41 @@ class DadosFakeRelatoriosSeeder extends Seeder
                             ]
                         ]);
 
-                        // Baixar do distribuidor com segurança de não negativar
-                        $estDist = Estoque::where('setor_id', $distribuidor->id)->where('produto_id', $prod->id)->first();
-                        if ($estDist) {
-                            if ($estDist->quantidade_atual < $qtdLiberada) {
-                                $estDist->quantidade_atual += ($qtdLiberada + 50);
+                        if ($isDevolucao) {
+                            // Devolução aceita: adiciona saldo de volta ao distribuidor
+                            $estDist = Estoque::where('setor_id', $distribuidor->id)->where('produto_id', $prod->id)->first();
+                            if ($estDist) {
+                                $estDist->quantidade_atual += $qtdLiberada;
+                                $estDist->save();
                             }
-                            $estDist->quantidade_atual -= $qtdLiberada;
-                            $estDist->save();
-                        }
+                            if ($setor->estoque) {
+                                $estOrigem = Estoque::where('setor_id', $setor->id)->where('produto_id', $prod->id)->first();
+                                if ($estOrigem && $estOrigem->quantidade_atual >= $qtdLiberada) {
+                                    $estOrigem->quantidade_atual -= $qtdLiberada;
+                                    $estOrigem->save();
+                                }
+                            }
+                        } else {
+                            // Baixar do distribuidor com segurança de não negativar
+                            $estDist = Estoque::where('setor_id', $distribuidor->id)->where('produto_id', $prod->id)->first();
+                            if ($estDist) {
+                                if ($estDist->quantidade_atual < $qtdLiberada) {
+                                    $estDist->quantidade_atual += ($qtdLiberada + 50);
+                                }
+                                $estDist->quantidade_atual -= $qtdLiberada;
+                                $estDist->save();
+                            }
 
-                        // Se o setor solicitante também gerencia estoque (ex: transferência entre farmácias), incrementa
-                        if ($setor->estoque) {
-                            $estDest = Estoque::firstOrCreate(
-                                ['setor_id' => $setor->id, 'produto_id' => $prod->id],
-                                ['quantidade_minima' => 20, 'quantidade_atual' => 0, 'status_disponibilidade' => 'D']
-                            );
-                            $estDest->quantidade_atual += $qtdLiberada;
-                            $estDest->status_disponibilidade = 'D';
-                            $estDest->save();
+                            // Se o setor solicitante também gerencia estoque (ex: transferência entre farmácias), incrementa
+                            if ($setor->estoque) {
+                                $estDest = Estoque::firstOrCreate(
+                                    ['setor_id' => $setor->id, 'produto_id' => $prod->id],
+                                    ['quantidade_minima' => 20, 'quantidade_atual' => 0, 'status_disponibilidade' => 'D']
+                                );
+                                $estDest->quantidade_atual += $qtdLiberada;
+                                $estDest->status_disponibilidade = 'D';
+                                $estDest->save();
+                            }
                         }
                     }
 
