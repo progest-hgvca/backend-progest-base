@@ -139,12 +139,12 @@ class User extends Authenticatable
      */
     public function podeVerValoresFinanceiros(?Setores $setor): bool
     {
-        if ($this->isSuperAdmin()) {
-            return true;
-        }
-
         if (!$setor || !$setor->isCAF()) {
             return false;
+        }
+
+        if ($this->isSuperAdmin()) {
+            return true;
         }
 
         return \Illuminate\Support\Facades\DB::table('usuario_setor')
