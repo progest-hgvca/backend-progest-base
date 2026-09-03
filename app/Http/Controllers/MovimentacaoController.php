@@ -156,7 +156,7 @@ class MovimentacaoController extends Controller
             $action = $statusMap[$status] ?? null;
         }
 
-        $aprovadorId = $request->input('aprovador_usuario_id') ?? $request->input('usuario_id');
+        $aprovadorId = $request->input('aprovador_usuario_id') ?? $request->input('usuario_id') ?? auth()->id();
         $itens = $request->input('itens'); // array de itens com quantidade_liberada ajustada
 
         if (!in_array($action, ['approve', 'reject', 'submit', 'cancel'])) {

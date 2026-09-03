@@ -134,6 +134,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Movimentações — todas as rotas protegidas
     // --------------------------------------------------------
     Route::post('/movimentacao/add',                   [MovimentacaoController::class, 'store']);
+    Route::post('/movimentacao/create',                [MovimentacaoController::class, 'store']);
     Route::match(['get', 'post'], '/movimentacao/listBySetor',   [MovimentacaoController::class, 'listBySetor']);
     Route::match(['get', 'post'], '/movimentacao/listByUnidade', [MovimentacaoController::class, 'listBySetor']); // legado
     Route::get('/movimentacao/{id}',                   [MovimentacaoController::class, 'show']);
