@@ -23,15 +23,6 @@ class CreateTipoVinculoTable extends Migration
             $table->enum('status', ['A', 'I'])->default('A')->comment('A = Ativo, I = Inativo');
             $table->timestamps();
         });
-
-        DB::table('tipo_vinculo')->insert([
-            ['nome' => 'Efetivo', 'descricao' => 'Servidor Efetivo', 'status' => 'A'],
-            ['nome' => 'Contrato', 'descricao' => 'Servidor Contratado', 'status' => 'A'],
-            ['nome' => 'Temporário', 'descricao' => 'Servidor Temporário', 'status' => 'A'],
-            ['nome' => 'Estagiário', 'descricao' => 'Servidor Estagiário', 'status' => 'A'],
-            ['nome' => 'Terceirizado', 'descricao' => 'Servidor Terceirizado', 'status' => 'A'],
-            ['nome' => 'Residente', 'descricao' => 'Servidor Residente', 'status' => 'A'],
-        ]);
     }
 
     /**
@@ -41,7 +32,6 @@ class CreateTipoVinculoTable extends Migration
      */
     public function down()
     {
-        DB::table('users')->where('email', 'admin@example.com')->delete();
         Schema::dropIfExists('tipo_vinculo');
     }
 }
