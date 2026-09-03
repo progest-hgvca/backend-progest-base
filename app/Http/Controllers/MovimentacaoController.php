@@ -55,6 +55,17 @@ class MovimentacaoController extends Controller
             return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
         }
 
+        // Validações específicas para Devolução ('D')
+        if (($data['tipo'] ?? '') === 'D') {
+            if (empty($data['setor_destino_id'])) {
+                return response()->json(['status' => false, 'message' => 'O setor de destino é obrigatório para devoluções.'], 422);
+            }
+            $setorDestino = \App\Models\Setores::find($data['setor_destino_id']);
+            if (!$setorDestino || !$setorDestino->estoque) {
+                return response()->json(['status' => false, 'message' => 'Devoluções só podem ser enviadas para setores com controle de estoque ativo (farmácias/almoxarifados).'], 422);
+            }
+        }
+
         try {
             // tornar criação atômica: se falhar a criação dos itens, rollback
             $mov = DB::transaction(function () use ($data) {
@@ -110,7 +121,9 @@ class MovimentacaoController extends Controller
             ->get()
             ->filter(function ($m) use ($setorId) {
                 if ($m->status_solicitacao === 'C') { // rascunho
-                    return $m->setor_destino_id == $setorId; // só mostrar rascunho para quem solicitou (destino)
+                    // Em devolução (D), quem solicitou/criou o rascunho é a origem; em transferência (T), é o destino
+                    $setorCriadorId = ($m->tipo === 'D') ? $m->setor_origem_id : $m->setor_destino_id;
+                    return $setorCriadorId == $setorId;
                 }
                 return true;
             })
@@ -165,26 +178,36 @@ class MovimentacaoController extends Controller
 
         $user = auth()->user();
         if (!$user->isSuperAdmin()) {
+            $isDevolucao = ($mov->tipo === 'D');
+
             if (in_array($action, ['approve', 'reject'])) {
-                // O setor de origem (que vai fornecer o item) é quem aprova/reprova
+                // Em devoluções (D), quem aprova/reprova é o setor de destino (que recebe o item de volta)
+                // Em transferências (T, S), quem aprova é o setor de origem (fornecedor)
+                $setorAprovadorId = $isDevolucao ? $mov->setor_destino_id : $mov->setor_origem_id;
+
                 $podeAprovar = \Illuminate\Support\Facades\DB::table('usuario_setor')
                     ->where('usuario_id', $user->id)
-                    ->where('setor_id', $mov->setor_origem_id)
+                    ->where('setor_id', $setorAprovadorId)
                     ->whereIn('perfil', ['admin', 'almoxarife'])
                     ->exists();
                 
                 if (!$podeAprovar) {
-                    return response()->json(['status' => false, 'message' => 'Permissão negada. Apenas administradores ou almoxarifes do setor fornecedor podem aprovar ou reprovar pedidos.'], 403);
+                    $papel = $isDevolucao ? 'do setor receptor da devolução' : 'do setor fornecedor';
+                    return response()->json(['status' => false, 'message' => "Permissão negada. Apenas administradores ou almoxarifes {$papel} podem aprovar ou reprovar pedidos."], 403);
                 }
             } elseif (in_array($action, ['submit', 'cancel'])) {
-                // O setor de destino (que pediu o item) é quem pode enviar rascunho ou cancelar
+                // Em devoluções (D), quem envia ou cancela é o setor de origem (devolvente)
+                // Em transferências (T, S), quem envia ou cancela é o setor de destino (solicitante)
+                $setorSolicitanteId = $isDevolucao ? $mov->setor_origem_id : $mov->setor_destino_id;
+
                 $podeEditar = \Illuminate\Support\Facades\DB::table('usuario_setor')
                     ->where('usuario_id', $user->id)
-                    ->where('setor_id', $mov->setor_destino_id)
+                    ->where('setor_id', $setorSolicitanteId)
                     ->exists(); 
 
                 if (!$podeEditar) {
-                    return response()->json(['status' => false, 'message' => 'Permissão negada. Você não pertence ao setor solicitante.'], 403);
+                    $papel = $isDevolucao ? 'ao setor que está devolvendo' : 'ao setor solicitante';
+                    return response()->json(['status' => false, 'message' => "Permissão negada. Você não pertence {$papel}."], 403);
                 }
             }
         }
@@ -223,12 +246,22 @@ class MovimentacaoController extends Controller
                     }
                 }
  
+                $isDevolucao = ($mov->tipo === 'D');
+                $setorOrigem = \App\Models\Setores::find($mov->setor_origem_id);
+                $origemControlaEstoque = $setorOrigem && (bool) $setorOrigem->estoque;
+
                 // Validar estoque da origem antes de aprovar
                 $errosEstoque = [];
                 foreach ($mov->itens as $item) {
-                $qtdLiberar = $quantidadesLiberadas[$item->id] ?? $item->quantidade_solicitada;
+                    $qtdLiberar = $quantidadesLiberadas[$item->id] ?? $item->quantidade_solicitada;
 
                     if ($qtdLiberar <= 0) continue; // Pular itens com quantidade zero
+
+                    // Se for devolução de um setor SEM controle de estoque físico (enfermarias, clínicas),
+                    // não há estoque armazenado na origem para debitar; segue direto para recebimento no destino.
+                    if ($isDevolucao && !$origemControlaEstoque) {
+                        continue;
+                    }
 
                     // Buscar estoque do produto na origem
                     // LOCK FOR UPDATE! 
@@ -283,78 +316,147 @@ class MovimentacaoController extends Controller
 
                     if ($qtdLiberar <= 0) continue;
 
-                    Log::info("Processando transferência", [
+                    Log::info("Processando movimentação (" . ($isDevolucao ? "Devolução" : "Transferência") . ")", [
                         'produto_id' => $item->produto_id,
                         'quantidade' => $qtdLiberar,
                         'origem_id' => $mov->setor_origem_id,
                         'destino_id' => $mov->setor_destino_id
                     ]);
 
-                    // 1. DEDUZIR do estoque de ORIGEM
-                    $estoqueOrigem = Estoque::where('produto_id', $item->produto_id)
-                        ->where('setor_id', $mov->setor_origem_id)
-                        ->lockForUpdate()
-                        ->first();
+                    // 1. DEDUZIR do estoque de ORIGEM (apenas se a origem controlar estoque físico)
+                    if (!$isDevolucao || $origemControlaEstoque) {
+                        $estoqueOrigem = Estoque::where('produto_id', $item->produto_id)
+                            ->where('setor_id', $mov->setor_origem_id)
+                            ->lockForUpdate()
+                            ->first();
 
-                    if (!$estoqueOrigem) {
-                        throw new \Exception("Estoque de origem não encontrado para produto {$item->produto_id} no setor {$mov->setor_origem_id}");
+                        if (!$estoqueOrigem) {
+                            throw new \Exception("Estoque de origem não encontrado para produto {$item->produto_id} no setor {$mov->setor_origem_id}");
+                        }
+
+                        $estoqueOrigem->quantidade_atual -= $qtdLiberar;
+                        $estoqueOrigem->status_disponibilidade = $estoqueOrigem->quantidade_atual > 0 ? 'D' : 'I';
+                        $estoqueOrigem->save();
+
+                        Log::info("Estoque origem atualizado", [
+                            'estoque_id' => $estoqueOrigem->id,
+                            'nova_quantidade' => $estoqueOrigem->quantidade_atual
+                        ]);
+
+                        // 1b. DEDUZIR dos lotes da ORIGEM (FIFO: vencimento mais próximo primeiro)
+                        $lotesTransferidos = $this->transferirLotesFifo(
+                            $item->produto_id,
+                            $mov->setor_origem_id,
+                            $mov->setor_destino_id,
+                            $qtdLiberar
+                        );
+
+                        $item->lote = json_encode($lotesTransferidos);
+                        $item->save();
                     }
 
-                    $estoqueOrigem->quantidade_atual -= $qtdLiberar;
-                    $estoqueOrigem->status_disponibilidade = $estoqueOrigem->quantidade_atual > 0 ? 'D' : 'I';
-                    $estoqueOrigem->save();
-
-                    Log::info("Estoque origem atualizado", [
-                        'estoque_id' => $estoqueOrigem->id,
-                        'nova_quantidade' => $estoqueOrigem->quantidade_atual
-                    ]);
-
-                    // 1b. DEDUZIR dos lotes da ORIGEM (FIFO: vencimento mais próximo primeiro)
-                    $lotesTransferidos = $this->transferirLotesFifo(
-                        $item->produto_id,
-                        $mov->setor_origem_id,
-                        $mov->setor_destino_id,
-                        $qtdLiberar
-                    );
-
-                    $item->lote = json_encode($lotesTransferidos);
-                    $item->save();
-
                     // 2. INCREMENTAR o estoque de DESTINO
-                    $estoqueDestino = Estoque::where('produto_id', $item->produto_id)
-                        ->where('setor_id', $mov->setor_destino_id)
-                        ->lockForUpdate()
-                        ->first();
+                    // Se for devolução de setor sem estoque físico, criamos/incrementamos o lote no destino
+                    if ($isDevolucao && !$origemControlaEstoque) {
+                        $estoqueDestino = Estoque::where('produto_id', $item->produto_id)
+                            ->where('setor_id', $mov->setor_destino_id)
+                            ->lockForUpdate()
+                            ->first();
 
-                    if (!$estoqueDestino) {
-                        // Criar estoque de destino se não existir
-                        Log::info("Criando novo estoque de destino", [
-                            'produto_id' => $item->produto_id,
-                            'setor_id' => $mov->setor_destino_id
-                        ]);
+                        if (!$estoqueDestino) {
+                            $estoqueDestino = Estoque::create([
+                                'produto_id' => $item->produto_id,
+                                'setor_id' => $mov->setor_destino_id,
+                                'quantidade_atual' => $qtdLiberar,
+                                'quantidade_minima' => 0,
+                                'status_disponibilidade' => 'D'
+                            ]);
+                        } else {
+                            $estoqueDestino->quantidade_atual += $qtdLiberar;
+                            $estoqueDestino->status_disponibilidade = 'D';
+                            $estoqueDestino->save();
+                        }
 
-                        $estoqueDestino = Estoque::create([
-                            'produto_id' => $item->produto_id,
-                            'setor_id' => $mov->setor_destino_id,
-                            'quantidade_atual' => $qtdLiberar,
-                            'quantidade_minima' => 0,
-                            'status_disponibilidade' => 'D'
-                        ]);
+                        // Lotes na Devolução: se informado lote pelo solicitante, usamos ele;
+                        // caso contrário, incorporamos ao lote vigente mais recente do destino ou criamos lote de devolução
+                        $loteIdentificador = $item->lote;
+                        $loteNome = null;
+                        $dataVencimento = null;
+                        if (!empty($loteIdentificador)) {
+                            $parsed = json_decode($loteIdentificador, true);
+                            if (is_array($parsed) && isset($parsed[0]['lote'])) {
+                                $loteNome = $parsed[0]['lote'];
+                                $dataVencimento = $parsed[0]['data_vencimento'] ?? null;
+                            } elseif (is_string($loteIdentificador)) {
+                                $loteNome = $loteIdentificador;
+                            }
+                        }
 
-                        Log::info("Estoque de destino criado", [
-                            'estoque_id' => $estoqueDestino->id,
-                            'quantidade_inicial' => $estoqueDestino->quantidade_atual
+                        if (empty($loteNome)) {
+                            $loteExistente = EstoqueLote::where('produto_id', $item->produto_id)
+                                ->where('setor_id', $mov->setor_destino_id)
+                                ->where('data_vencimento', '>=', now()->toDateString())
+                                ->orderBy('data_vencimento', 'desc')
+                                ->first();
+
+                            if ($loteExistente) {
+                                $loteNome = $loteExistente->lote;
+                                $dataVencimento = $loteExistente->data_vencimento;
+                            } else {
+                                $loteNome = 'DEV-' . date('Ymd');
+                                $dataVencimento = now()->addMonths(6)->toDateString();
+                            }
+                        }
+
+                        $loteDestino = EstoqueLote::firstOrCreate(
+                            [
+                                'setor_id' => $mov->setor_destino_id,
+                                'produto_id' => $item->produto_id,
+                                'lote' => $loteNome,
+                            ],
+                            [
+                                'data_vencimento' => $dataVencimento ?? now()->addMonths(6)->toDateString(),
+                                'quantidade_disponivel' => 0,
+                            ]
+                        );
+                        $loteDestino->quantidade_disponivel += $qtdLiberar;
+                        $loteDestino->save();
+
+                        $item->lote = json_encode([
+                            [
+                                'lote' => $loteNome,
+                                'data_vencimento' => $loteDestino->data_vencimento,
+                                'qtd' => $qtdLiberar
+                            ]
                         ]);
+                        $item->save();
                     } else {
-                        // Incrementar estoque existente
-                        $estoqueDestino->quantidade_atual += $qtdLiberar;
-                        $estoqueDestino->status_disponibilidade = 'D';
-                        $estoqueDestino->save();
+                        // Transferência normal ou devolução de setor COM estoque:
+                        // transferirLotesFifo já incrementou o lote do destino se havia lotes.
+                        // Atualizamos o saldo agregado de Estoque do destino:
+                        $estoqueDestino = Estoque::where('produto_id', $item->produto_id)
+                            ->where('setor_id', $mov->setor_destino_id)
+                            ->lockForUpdate()
+                            ->first();
 
-                        Log::info("Estoque destino atualizado", [
-                            'estoque_id' => $estoqueDestino->id,
-                            'nova_quantidade' => $estoqueDestino->quantidade_atual
-                        ]);
+                        if (!$estoqueDestino) {
+                            Log::info("Criando novo estoque de destino", [
+                                'produto_id' => $item->produto_id,
+                                'setor_id' => $mov->setor_destino_id
+                            ]);
+
+                            $estoqueDestino = Estoque::create([
+                                'produto_id' => $item->produto_id,
+                                'setor_id' => $mov->setor_destino_id,
+                                'quantidade_atual' => $qtdLiberar,
+                                'quantidade_minima' => 0,
+                                'status_disponibilidade' => 'D'
+                            ]);
+                        } else {
+                            $estoqueDestino->quantidade_atual += $qtdLiberar;
+                            $estoqueDestino->status_disponibilidade = 'D';
+                            $estoqueDestino->save();
+                        }
                     }
                 }
 
