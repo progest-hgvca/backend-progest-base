@@ -10,6 +10,13 @@ class FornecedorControllerTest extends TestCase
 {
     use DatabaseTransactions;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $admin = \App\Models\User::factory()->create();
+        \Laravel\Sanctum\Sanctum::actingAs($admin);
+    }
+
     private function generateValidCnpj($i = 0)
     {
         $cnpjs = ['80177977000118', '96329064000100', '01648071000168', '95186076000160'];

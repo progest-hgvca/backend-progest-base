@@ -2,14 +2,25 @@
 
 namespace Tests\Feature;
 
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
 use App\Models\Setores;
 use App\Models\Polo;
 use App\Models\SetorDistribuidor;
+use App\Models\User;
+use Laravel\Sanctum\Sanctum;
 
 class SetoresFornecedoresTest extends TestCase
 {
-    // NOTA: RefreshDatabase removido - testes rodam no banco real
+    use DatabaseTransactions;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $admin = User::where('email', 'adminti@gmail.com')->first() 
+            ?? User::factory()->create(['email' => 'adminti@gmail.com']);
+        Sanctum::actingAs($admin);
+    }
 
     public function test_create_setor_with_fornecedor_and_uniqueness()
     {
@@ -67,8 +78,6 @@ class SetoresFornecedoresTest extends TestCase
             ]
         ];
 
-        // Primeiro criar novo solicitante com fornecedor do mesmo tipo para o mesmo solicitante (não é exatamente o mesmo solicitante),
-        // a regra se aplica por solicitante, então a validação só impede duplicatas por solicitante. Aqui apenas assertamos que criação é possível para outro solicitante.
         $response2 = $this->postJson('/api/setores/add', $payload2);
         $response2->assertStatus(200)->assertJson(['status' => true]);
     }

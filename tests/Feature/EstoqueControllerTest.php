@@ -23,6 +23,9 @@ class EstoqueControllerTest extends TestCase
     {
         parent::setUp();
 
+        $admin = \App\Models\User::factory()->create();
+        \Laravel\Sanctum\Sanctum::actingAs($admin);
+
         $polo = Polo::factory()->create();
 
         $this->setor = Setores::create([

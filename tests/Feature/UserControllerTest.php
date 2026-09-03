@@ -5,18 +5,20 @@ namespace Tests\Feature;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
 use App\Models\User;
-use App\Models\TipoVinculo;
+use App\Models\RegimeContratacao;
 use Laravel\Sanctum\Sanctum;
 
 class UserControllerTest extends TestCase
 {
     use DatabaseTransactions;
 
+    protected $regimeContratacao;
+
     protected function setUp(): void
     {
         parent::setUp();
-        // Cria um tipo de vínculo de teste
-        $this->tipoVinculo = TipoVinculo::firstOrCreate(
+        // Cria um regime de contratação de teste
+        $this->regimeContratacao = RegimeContratacao::firstOrCreate(
             ['nome' => 'Efetivo Teste'],
             ['descricao' => 'Efetivo', 'status' => 'A']
         );
@@ -39,7 +41,7 @@ class UserControllerTest extends TestCase
                 'cpf' => $this->generateValidCpf(),
                 'data_nascimento' => '1990-01-01',
                 'telefone' => '11999999999',
-                'tipo_vinculo' => $this->tipoVinculo->id,
+                'regime_contratacao_id' => $this->regimeContratacao->id,
                 'status' => 'A',
                 'password' => 'Password123'
             ]
@@ -74,7 +76,7 @@ class UserControllerTest extends TestCase
                 'cpf' => '06893242867',
                 'data_nascimento' => '1990-01-01',
                 'telefone' => '11999999999',
-                'tipo_vinculo' => $this->tipoVinculo->id,
+                'regime_contratacao_id' => $this->regimeContratacao->id,
                 'status' => 'A'
             ]
         ];

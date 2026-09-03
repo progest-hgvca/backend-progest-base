@@ -12,9 +12,11 @@ use App\Models\Polo;
 use App\Models\UnidadeMedida;
 use App\Models\User;
 use Tests\TestCase;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 
 class MovimentacaoSimpleTest extends TestCase
 {
+    use DatabaseTransactions;
     // NOTA: RefreshDatabase removido - testes rodam no banco real
     // Para criar dados de teste, usar seeders ou factories manualmente
 
@@ -45,6 +47,12 @@ class MovimentacaoSimpleTest extends TestCase
             'estoque' => true,
             'status' => 'A',
             'polo_id' => $unidade->id
+        ]);
+
+        \DB::table('usuario_setor')->insert([
+            'usuario_id' => $usuario->id,
+            'setor_id' => $setorOrigem->id,
+            'perfil' => 'almoxarife'
         ]);
 
         $setorDestino = Setores::create([
@@ -83,6 +91,16 @@ class MovimentacaoSimpleTest extends TestCase
         $estoqueOrigem = Estoque::where('produto_id', $produto->id)
             ->where('setor_id', $setorOrigem->id)
             ->first();
+
+        \DB::table('estoque_lote')->insert([
+            'setor_id' => $setorOrigem->id,
+            'produto_id' => $produto->id,
+            'lote' => 'LOTE-SIMPLES',
+            'quantidade_disponivel' => 100,
+            'data_vencimento' => now()->addYear()->format('Y-m-d'),
+            'created_at' => now(),
+            'updated_at' => now()
+        ]);
         
         // Verificar que foi criado com 100
         $this->assertEquals(100, $estoqueOrigem->quantidade_atual, 
@@ -106,6 +124,7 @@ class MovimentacaoSimpleTest extends TestCase
         ]);
 
         // 4. APROVAR MOVIMENTAÇÃO
+        \Laravel\Sanctum\Sanctum::actingAs($usuario);
         $response = $this->postJson("/api/movimentacao/{$mov->id}/process", [
             'action' => 'approve',
             'aprovador_usuario_id' => $usuario->id,

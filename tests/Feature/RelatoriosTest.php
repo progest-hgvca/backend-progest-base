@@ -18,7 +18,7 @@ use Laravel\Sanctum\Sanctum;
 
 class RelatoriosTest extends TestCase
 {
-    // NOTA: RefreshDatabase removido - testes rodam no banco real
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
 
     protected function setUp(): void
     {

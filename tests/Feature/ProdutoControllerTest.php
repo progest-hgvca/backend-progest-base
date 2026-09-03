@@ -19,6 +19,10 @@ class ProdutoControllerTest extends TestCase
     {
         parent::setUp();
         
+        $admin = \App\Models\User::where('email', 'adminti@gmail.com')->first() 
+            ?? \App\Models\User::factory()->create(['email' => 'adminti@gmail.com']);
+        \Laravel\Sanctum\Sanctum::actingAs($admin);
+        
         $this->grupo = GrupoProduto::firstOrCreate(
             ['nome' => 'Medicamentos Teste'],
             ['status' => 'A']

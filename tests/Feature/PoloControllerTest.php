@@ -10,6 +10,13 @@ class PoloControllerTest extends TestCase
 {
     use DatabaseTransactions;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $admin = \App\Models\User::factory()->create();
+        \Laravel\Sanctum\Sanctum::actingAs($admin);
+    }
+
     public function test_create_polo_successfully()
     {
         $payload = [

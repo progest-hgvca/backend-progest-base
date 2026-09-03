@@ -25,6 +25,10 @@ class EntradaControllerTest extends TestCase
     {
         parent::setUp();
 
+        $admin = \App\Models\User::where('email', 'adminti@gmail.com')->first() 
+            ?? \App\Models\User::factory()->create(['email' => 'adminti@gmail.com']);
+        \Laravel\Sanctum\Sanctum::actingAs($admin);
+
         $polo = Polo::factory()->create();
 
         $this->setor = Setores::create([
