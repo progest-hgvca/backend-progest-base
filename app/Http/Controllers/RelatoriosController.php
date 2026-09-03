@@ -104,10 +104,43 @@ class RelatoriosController extends Controller
             // Buscar todos os resultados
             $results = $query->get();
 
+            $user = auth()->user();
+            $results = $results->map(function ($entrada) use ($user) {
+                $podeVer = $user && $entrada->setor && $user->podeVerValoresFinanceiros($entrada->setor);
+                $valorTotalNota = 0;
+                $temItensComValor = false;
+
+                if ($entrada->itens) {
+                    $entrada->itens->transform(function ($item) use ($podeVer, &$valorTotalNota, &$temItensComValor) {
+                        if ($podeVer && $item->valor_unitario !== null) {
+                            $subtotal = round((float) $item->valor_unitario * (float) $item->quantidade, 2);
+                            $item->subtotal = $subtotal;
+                            $valorTotalNota += $subtotal;
+                            $temItensComValor = true;
+                        } else {
+                            $item->valor_unitario = null;
+                            $item->subtotal = null;
+                        }
+                        return $item;
+                    });
+                }
+
+                $entrada->pode_ver_valores = $podeVer;
+                $entrada->valor_total_nota = ($podeVer && $temItensComValor) ? round($valorTotalNota, 2) : null;
+
+                return $entrada;
+            });
+
+            $totalFinanceiroEntradas = $results->where('pode_ver_valores', true)->sum('valor_total_nota');
+
             return response()->json([
                 'status' => true,
                 'message' => 'Relatório de entradas recuperado com sucesso',
                 'data' => $results,
+                'totalizadores' => [
+                    'total_entradas' => $results->count(),
+                    'valor_total_entradas' => round($totalFinanceiroEntradas, 2),
+                ]
             ], 200);
 
         } catch (\Exception $e) {
@@ -1024,8 +1057,12 @@ class RelatoriosController extends Controller
             // Buscar todos os resultados
             $results = $query->get();
 
+            $user = auth()->user();
+
             // Buscar lotes para cada item do estoque
-            $items = collect($results)->map(function ($estoque) use ($filters) {
+            $items = collect($results)->map(function ($estoque) use ($filters, $user) {
+                $podeVerValores = $user && $estoque->setor && $user->podeVerValoresFinanceiros($estoque->setor);
+
                 // Buscar lotes deste produto neste setor
                 $lotesQuery = \App\Models\EstoqueLote::where('setor_id', $estoque->setor_id)
                     ->where('produto_id', $estoque->produto_id)
@@ -1045,6 +1082,29 @@ class RelatoriosController extends Controller
                 $totalLotes = $lotes->count();
                 $quantidadeLotes = $lotes->sum('quantidade_disponivel');
 
+                $valorTotalProduto = 0;
+                $temValor = false;
+
+                $lotesFormatados = $lotes->map(function($lote) use ($podeVerValores, &$valorTotalProduto, &$temValor) {
+                    $vUnit = ($podeVerValores && $lote->valor_unitario !== null) ? (float) $lote->valor_unitario : null;
+                    $subtotal = ($vUnit !== null) ? round($vUnit * (float) $lote->quantidade_disponivel, 2) : null;
+                    if ($subtotal !== null) {
+                        $valorTotalProduto += $subtotal;
+                        $temValor = true;
+                    }
+                    return [
+                        'id' => $lote->id,
+                        'lote' => $lote->lote,
+                        'quantidade_disponivel' => (int) $lote->quantidade_disponivel,
+                        'valor_unitario' => $vUnit,
+                        'valor_total_lote' => $subtotal,
+                        'data_vencimento' => $lote->data_vencimento->format('Y-m-d'),
+                        'data_fabricacao' => $lote->data_fabricacao ? $lote->data_fabricacao->format('Y-m-d') : null,
+                        'dias_para_vencer' => now()->diffInDays($lote->data_vencimento, false),
+                        'vencido' => $lote->data_vencimento < now()
+                    ];
+                });
+
                 // Adicionar informações de lotes ao objeto estoque
                 $estoque->lotes_info = [
                     'total_lotes' => $totalLotes,
@@ -1055,18 +1115,12 @@ class RelatoriosController extends Controller
                         'data_vencimento' => $loteVencimentoProximo->data_vencimento->format('Y-m-d'),
                         'dias_para_vencer' => now()->diffInDays($loteVencimentoProximo->data_vencimento, false)
                     ] : null,
-                    'lotes' => $lotes->map(function($lote) {
-                        return [
-                            'id' => $lote->id,
-                            'lote' => $lote->lote,
-                            'quantidade_disponivel' => (int) $lote->quantidade_disponivel,
-                            'data_vencimento' => $lote->data_vencimento->format('Y-m-d'),
-                            'data_fabricacao' => $lote->data_fabricacao ? $lote->data_fabricacao->format('Y-m-d') : null,
-                            'dias_para_vencer' => now()->diffInDays($lote->data_vencimento, false),
-                            'vencido' => $lote->data_vencimento < now()
-                        ];
-                    })
+                    'lotes' => $lotesFormatados
                 ];
+
+                $estoque->pode_ver_valores = $podeVerValores;
+                $estoque->valor_total = ($podeVerValores && $temValor) ? round($valorTotalProduto, 2) : null;
+                $estoque->preco_medio = ($podeVerValores && $temValor && $quantidadeLotes > 0) ? round($valorTotalProduto / $quantidadeLotes, 4) : null;
 
                 // Adicionar flag se está abaixo do mínimo
                 $estoque->abaixo_minimo = $estoque->quantidade_atual < $estoque->quantidade_minima;
@@ -1074,12 +1128,15 @@ class RelatoriosController extends Controller
                 return $estoque;
             });
 
+            $totalFinanceiroEstoque = $items->where('pode_ver_valores', true)->sum('valor_total');
+
             // Calcular totalizadores
             $totalizadores = [
                 'total_itens' => $items->count(),
                 'total_produtos_disponiveis' => \App\Models\Estoque::where('status_disponibilidade', 'D')->count(),
                 'total_produtos_indisponiveis' => \App\Models\Estoque::where('status_disponibilidade', 'I')->count(),
                 'total_abaixo_minimo' => \App\Models\Estoque::whereRaw('quantidade_atual < quantidade_minima')->count(),
+                'valor_total_estoque' => round($totalFinanceiroEstoque, 2),
             ];
 
             return response()->json([

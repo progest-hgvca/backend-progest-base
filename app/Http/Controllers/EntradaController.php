@@ -162,12 +162,16 @@ class EntradaController extends Controller
                         ],
                         [
                             'quantidade_disponivel' => 0,
+                            'valor_unitario' => $itemEntrada->valor_unitario,
                             'data_vencimento' => $item['data_vencimento'],
                             'data_fabricacao' => $item['data_fabricacao'] ?? null,
                         ]
                     );
 
                     $estoqueLote->quantidade_disponivel += $itemEntrada->quantidade;
+                    if ($itemEntrada->valor_unitario !== null) {
+                        $estoqueLote->valor_unitario = $itemEntrada->valor_unitario;
+                    }
                     $estoqueLote->save();
                 }
 

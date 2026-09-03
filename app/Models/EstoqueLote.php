@@ -16,12 +16,14 @@ class EstoqueLote extends Model
         'produto_id',
         'lote',
         'quantidade_disponivel',
+        'valor_unitario',
         'data_vencimento',
         'data_fabricacao',
     ];
 
     protected $casts = [
         'quantidade_disponivel' => 'decimal:3',
+        'valor_unitario' => 'decimal:4',
         'data_vencimento' => 'date',
         'data_fabricacao' => 'date',
     ];

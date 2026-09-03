@@ -132,6 +132,28 @@ class User extends Authenticatable
         return $this->polosAdministrados()->where('polos.id', $polo_id)->exists();
     }
 
+    /**
+     * Verifica se o usuário tem permissão para visualizar valores financeiros de lotes/estoque.
+     * Regra: Super Admin tem acesso total.
+     * Para outros usuários: Apenas se o setor for CAF E o usuário tiver perfil 'admin' ou 'almoxarife' no setor.
+     */
+    public function podeVerValoresFinanceiros(?Setores $setor): bool
+    {
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        if (!$setor || !$setor->isCAF()) {
+            return false;
+        }
+
+        return \Illuminate\Support\Facades\DB::table('usuario_setor')
+            ->where('usuario_id', $this->id)
+            ->where('setor_id', $setor->id)
+            ->whereIn('perfil', ['admin', 'almoxarife'])
+            ->exists();
+    }
+
     // ==========================================
     // ACCESSORS (Para uso no Frontend via JSON)
     // ==========================================

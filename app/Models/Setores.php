@@ -111,4 +111,23 @@ class Setores extends Model
     {
         return $this->hasMany(SetorDistribuidor::class, 'setor_solicitante_id');
     }
+
+    /**
+     * Verifica se o setor é a CAF (Central de Abastecimento Farmacêutico).
+     * Identificado pelo nome contendo 'CAF' ou 'CENTRAL DE ABASTECIMENTO',
+     * ou por ser distribuidor central com estoque sem fornecedores a montante.
+     */
+    public function isCAF(): bool
+    {
+        $nomeUpper = mb_strtoupper($this->nome ?? '', 'UTF-8');
+        if (str_contains($nomeUpper, 'CAF') || str_contains($nomeUpper, 'CENTRAL DE ABASTECIMENTO')) {
+            return true;
+        }
+
+        if ($this->estoque && !$this->distribuidoresRelacionados()->exists()) {
+            return true;
+        }
+
+        return false;
+    }
 }

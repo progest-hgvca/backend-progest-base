@@ -199,6 +199,7 @@ class DadosFakeRelatoriosSeeder extends Seeder
 
         foreach ($estoques as $idx => $estoque) {
             $saldoRestante = (float) $estoque->quantidade_atual;
+            $valorUnitario = $estoque->produto ? $this->calcularPrecoRealista($estoque->produto) : null;
 
             // 1. Lote de Vencimento Próximo (para ~15% dos produtos) - expira em 20 a 50 dias
             if ($idx % 6 === 0 && $saldoRestante > 15) {
@@ -214,6 +215,7 @@ class DadosFakeRelatoriosSeeder extends Seeder
                     ],
                     [
                         'quantidade_disponivel' => $qtdLoteAlerta,
+                        'valor_unitario'        => $valorUnitario,
                         'data_fabricacao'       => $now->copy()->subMonths(18)->toDateString(),
                         'data_vencimento'       => $dataVencAlerta,
                         'created_at'            => $now->copy()->subMonths(6),
@@ -242,6 +244,7 @@ class DadosFakeRelatoriosSeeder extends Seeder
                     ],
                     [
                         'quantidade_disponivel' => $qtdDesteLote,
+                        'valor_unitario'        => $valorUnitario,
                         'data_fabricacao'       => $now->copy()->subMonths(rand(2, 6))->toDateString(),
                         'data_vencimento'       => $dataVenc,
                         'created_at'            => $now->copy()->subMonths(3),
@@ -266,6 +269,7 @@ class DadosFakeRelatoriosSeeder extends Seeder
                     ],
                     [
                         'quantidade_disponivel' => rand(5, 15),
+                        'valor_unitario'        => $valorUnitario,
                         'data_fabricacao'       => $now->copy()->subMonths(30)->toDateString(),
                         'data_vencimento'       => $dataVencPassada,
                         'created_at'            => $now->copy()->subMonths(12),

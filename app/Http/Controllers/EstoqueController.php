@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Estoque;
+use App\Models\EstoqueLote;
 use App\Models\Setores;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -35,8 +36,11 @@ class EstoqueController extends Controller
                 ], 200);
             }
 
+            $user = auth()->user();
+            $podeVerValores = $user && $user->podeVerValoresFinanceiros($setor);
+
             // Buscar estoque do setor com informações do produto
-            $estoque = Estoque::with([
+            $estoqueQuery = Estoque::with([
                 'produto' => function ($query) {
                     $query->select('id', 'nome', 'marca', 'codigo_simpas', 'codigo_barras', 'grupo_produto_id', 'unidade_medida_id', 'status');
                 },
@@ -46,10 +50,36 @@ class EstoqueController extends Controller
                 'produto.unidadeMedida' => function ($query) {
                     $query->select('id', 'nome');
                 }
-            ])
+            ]);
+
+            $lotesDoSetor = [];
+            if ($podeVerValores) {
+                $lotesDoSetor = EstoqueLote::where('setor_id', $setorId)
+                    ->where('quantidade_disponivel', '>', 0)
+                    ->get()
+                    ->groupBy('produto_id');
+            }
+
+            $estoque = $estoqueQuery
                 ->where('setor_id', $setorId)
                 ->get()
-                ->map(function ($item) {
+                ->map(function ($item) use ($podeVerValores, $lotesDoSetor) {
+                    $valorTotalProduto = null;
+                    $precoMedio = null;
+
+                    if ($podeVerValores && isset($lotesDoSetor[$item->produto_id])) {
+                        $somaValor = 0;
+                        $somaQtd = 0;
+                        foreach ($lotesDoSetor[$item->produto_id] as $lote) {
+                            if ($lote->valor_unitario !== null) {
+                                $somaValor += ((float) $lote->valor_unitario * (float) $lote->quantidade_disponivel);
+                                $somaQtd += (float) $lote->quantidade_disponivel;
+                            }
+                        }
+                        $valorTotalProduto = round($somaValor, 2);
+                        $precoMedio = $somaQtd > 0 ? round($somaValor / $somaQtd, 4) : null;
+                    }
+
                     return [
                         'estoque_id' => $item->id,
                         'quantidade_atual' => $item->quantidade_atual,
@@ -57,6 +87,8 @@ class EstoqueController extends Controller
                         'status_disponibilidade' => $item->status_disponibilidade,
                         'status_disponibilidade_texto' => $item->status_disponibilidade === 'D' ? 'Disponível' : 'Indisponível',
                         'abaixo_minimo' => $item->isAbaixoMinimo(),
+                        'valor_total' => $valorTotalProduto,
+                        'preco_medio' => $precoMedio,
                         'produto' => [
                             'id' => $item->produto->id,
                             'nome' => $item->produto->nome,
@@ -80,6 +112,10 @@ class EstoqueController extends Controller
                     ];
                 });
 
+            $valorTotalPatrimonio = $podeVerValores 
+                ? round($estoque->sum('valor_total'), 2)
+                : null;
+
             return response()->json([
                 'status' => true,
                 'data'   => [
@@ -93,6 +129,8 @@ class EstoqueController extends Controller
                         'total_produtos'         => $estoque->count(),
                         'produtos_disponiveis'   => $estoque->where('status_disponibilidade', 'D')->count(),
                         'produtos_abaixo_minimo' => $estoque->where('abaixo_minimo', true)->count(),
+                        'pode_ver_valores'       => $podeVerValores,
+                        'valor_total_patrimonio' => $valorTotalPatrimonio,
                     ]
                 ]
             ]);

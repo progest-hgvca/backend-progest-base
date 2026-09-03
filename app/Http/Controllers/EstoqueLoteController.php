@@ -30,24 +30,53 @@ class EstoqueLoteController extends Controller
             }
 
             // Buscar o estoque para pegar produto_id e setor_id
-            $estoque = Estoque::find($request->estoque_id);
+            $estoque = Estoque::with('setor')->find($request->estoque_id);
+            if (!$estoque) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Registro de estoque não encontrado.'
+                ], 404);
+            }
+
+            $user = auth()->user();
+            $podeVerValores = $user && $estoque->setor && $user->podeVerValoresFinanceiros($estoque->setor);
 
             $lotes = EstoqueLote::with([
-                // 'codigo_unidade' não existe na tabela 'setores', removido
                 'setor:id,nome,tipo',
                 'produto:id,nome,marca,grupo_produto_id,unidade_medida_id',
                 'produto.grupoProduto:id,nome,tipo',
-                // 'abreviacao' não existe em unidade_medida (migration/model), removido
                 'produto.unidadeMedida:id,nome',
             ])
                 ->where('produto_id', $estoque->produto_id)
                 ->where('setor_id', $estoque->setor_id)
                 ->orderBy('data_vencimento', 'asc')
-                ->get();
+                ->get()
+                ->map(function ($lote) use ($podeVerValores) {
+                    $item = $lote->toArray();
+                    if ($podeVerValores) {
+                        $vUnit = $lote->valor_unitario ? (float) $lote->valor_unitario : null;
+                        $item['valor_unitario'] = $vUnit;
+                        $item['valor_total_lote'] = $vUnit !== null ? round($vUnit * (float) $lote->quantidade_disponivel, 2) : null;
+                    } else {
+                        $item['valor_unitario'] = null;
+                        $item['valor_total_lote'] = null;
+                    }
+                    return $item;
+                });
+
+            $valorTotalProduto = $podeVerValores 
+                ? round($lotes->sum('valor_total_lote'), 2)
+                : null;
 
             return response()->json([
                 'status' => true,
                 'data' => $lotes,
+                'permissoes' => [
+                    'pode_ver_valores' => $podeVerValores,
+                ],
+                'resumo_financeiro' => [
+                    'valor_total_produto' => $valorTotalProduto,
+                ],
             ]);
         } catch (\Exception $e) {
             Log::error('Erro ao listar lotes do estoque: ' . $e->getMessage(), [
