@@ -34,7 +34,7 @@ class UserRequest extends BaseFormRequest
             ],
             'user.data_nascimento' => 'required|date|before:-14 years',
             'user.telefone' => 'nullable|string|max:20',
-            'user.regime_contratacao_id' => 'required|exists:regime_contratacao_id,id',
+            'user.regime_contratacao_id' => 'required|exists:regime_contratacao,id',
             'user.status' => 'required|in:A,I',
 
             'user.password' => [

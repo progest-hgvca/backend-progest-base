@@ -17,6 +17,7 @@ class FullSystemSeeder extends Seeder
     public function run()
     {
         $this->call([
+            RegimeContratacaoSeeder::class,        // Regimes de contratação hospitalares e do setor de saúde
             PolosESetoresFullSeeder::class,        // 63 setores
             AdminInicialSeeder::class,             // Usuário adminti
             UsuariosEPerfisSeeder::class,          // Usuários distribuídos

@@ -18,6 +18,7 @@ class DemoSystemSeeder extends Seeder
     public function run()
     {
         $this->call([
+            RegimeContratacaoSeeder::class,        // Regimes de contratação hospitalares e do setor de saúde
             PolosESetoresDemoSeeder::class,        // 13 setores oficiais da demonstração
             AdminInicialSeeder::class,             // Usuário adminti
             UsuariosEPerfisSeeder::class,          // Usuários de teste fakes (Jean, Arthur, Pablo)
