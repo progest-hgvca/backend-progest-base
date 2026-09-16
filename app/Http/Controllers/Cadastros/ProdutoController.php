@@ -180,14 +180,14 @@ class ProdutoController
                     ->join('setores', 'usuario_setor.setor_id', '=', 'setores.id')
                     ->leftJoin('setor_distribuidor', 'setores.id', '=', 'setor_distribuidor.setor_solicitante_id')
                     ->where('usuario_setor.usuario_id', $user->id)
-                    ->whereIn('usuario_setor.perfil', ['admin', 'almoxarife'])
+                    ->where('usuario_setor.perfil', 'admin')
                     ->whereNull('setor_distribuidor.id')
                     ->exists();
 
                 if (!$hasCAFAccess) {
                     return response()->json([
                         'status' => false,
-                        'message' => 'Criacao de produtos permitida apenas para administradores e almoxarifes da CAF.'
+                        'message' => 'Criação de produtos permitida apenas para administradores da CAF.'
                     ], 403);
                 }
             }
@@ -226,14 +226,14 @@ class ProdutoController
                     ->join('setores', 'usuario_setor.setor_id', '=', 'setores.id')
                     ->leftJoin('setor_distribuidor', 'setores.id', '=', 'setor_distribuidor.setor_solicitante_id')
                     ->where('usuario_setor.usuario_id', $user->id)
-                    ->whereIn('usuario_setor.perfil', ['admin', 'almoxarife'])
+                    ->where('usuario_setor.perfil', 'admin')
                     ->whereNull('setor_distribuidor.id')
                     ->exists();
 
                 if (!$hasCAFAccess) {
                     return response()->json([
                         'status' => false,
-                        'message' => 'A edição de produtos é permitida apenas para administradores e almoxarifes da CAF.'
+                        'message' => 'A edição de produtos é permitida apenas para administradores da CAF.'
                     ], 403);
                 }
             }
@@ -274,14 +274,14 @@ class ProdutoController
                     ->join('setores', 'usuario_setor.setor_id', '=', 'setores.id')
                     ->leftJoin('setor_distribuidor', 'setores.id', '=', 'setor_distribuidor.setor_solicitante_id')
                     ->where('usuario_setor.usuario_id', $user->id)
-                    ->whereIn('usuario_setor.perfil', ['admin', 'almoxarife'])
+                    ->where('usuario_setor.perfil', 'admin')
                     ->whereNull('setor_distribuidor.id')
                     ->exists();
 
                 if (!$hasCAFAccess) {
                     return response()->json([
                         'status' => false,
-                        'message' => 'A exclusão de produtos é permitida apenas para administradores e almoxarifes da CAF.'
+                        'message' => 'A exclusão de produtos é permitida apenas para administradores da CAF.'
                     ], 403);
                 }
             }

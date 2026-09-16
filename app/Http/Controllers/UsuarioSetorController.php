@@ -183,10 +183,11 @@ class UsuarioSetorController extends Controller
             $usuarioIdSolicitado = $request->input('usuario_id');
 
             // Por padrão, o usuário só pode consultar os próprios vínculos.
-            // Somente o super admin pode consultar os vínculos de outro usuário
-            // (ex.: tela de Gestão de Vínculos no módulo administrativo).
+            // Somente admins (SuperAdmin, Admin da CAF ou Admin de algum setor)
+            // podem consultar os vínculos de outro usuário
             if (!empty($usuarioIdSolicitado) && (int) $usuarioIdSolicitado !== (int) $autenticado->id) {
-                if (!$autenticado->isSuperAdmin()) {
+                $hasAdminProfile = $autenticado->setores()->wherePivot('perfil', 'admin')->exists();
+                if (!$autenticado->isSuperAdmin() && !$autenticado->isAdminCaf() && !$hasAdminProfile) {
                     return response()->json(['status' => false, 'message' => 'Ação não permitida.'], 403);
                 }
                 $usuarioId = $usuarioIdSolicitado;
