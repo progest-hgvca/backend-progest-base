@@ -73,11 +73,10 @@ class PolosESetoresFullSeeder extends Seeder
             $s($hgvc->id, 'CLÍNICA CIRÚRGICA', false, 'Ambos'),
             $s($hgvc->id, 'PEDIATRIA',         false, 'Ambos'),
 
-            // HGVC — SEM ESTOQUE: UTIs (8)
+            // HGVC — SEM ESTOQUE: UTIs (7)
             $s($hgvc->id, 'UTI 1',     false, 'Ambos'),
             $s($hgvc->id, 'UTI 2',     false, 'Ambos'),
-            $s($hgvc->id, 'UTI 3A',    false, 'Ambos'),
-            $s($hgvc->id, 'UTI 3B',    false, 'Ambos'),
+            $s($hgvc->id, 'UTI 3',     false, 'Ambos'),
             $s($hgvc->id, 'UTI 4',     false, 'Ambos'),
             $s($hgvc->id, 'UTI PED1',  false, 'Ambos'),
             $s($hgvc->id, 'UTI PED 2', false, 'Ambos'),

@@ -84,6 +84,12 @@ class PolosESetoresDemoSeeder extends Seeder
             $s($hgvc->id, 'CENTRO CIRÚRGICO', false, 'Ambos'),
             $s($hgvc->id, 'CLÍNICA MÉDICA',   false, 'Ambos'),
             $s($hgvc->id, 'UTI 1',            false, 'Ambos'),
+            $s($hgvc->id, 'UTI 2',            false, 'Ambos'),
+            $s($hgvc->id, 'UTI 3',            false, 'Ambos'),
+            $s($hgvc->id, 'UTI 4',            false, 'Ambos'),
+            $s($hgvc->id, 'UTI PED1',         false, 'Ambos'),
+            $s($hgvc->id, 'UTI PED 2',        false, 'Ambos'),
+            $s($hgvc->id, 'UTI NEO',          false, 'Ambos'),
             $s($hgvc->id, 'SALA VERMELHA',    false, 'Ambos'),
 
             // HGVC — SEM ESTOQUE: Administrativos
@@ -136,8 +142,7 @@ class PolosESetoresDemoSeeder extends Seeder
 
         $uti1   = $get('UTI 1',     $hgvc->id);
         $uti2   = $get('UTI 2',     $hgvc->id);
-        $uti3a  = $get('UTI 3A',    $hgvc->id);
-        $uti3b  = $get('UTI 3B',    $hgvc->id);
+        $uti3   = $get('UTI 3',     $hgvc->id);
         $uti4   = $get('UTI 4',     $hgvc->id);
         $utiP1  = $get('UTI PED1',  $hgvc->id);
         $utiP2  = $get('UTI PED 2', $hgvc->id);
@@ -207,8 +212,8 @@ class PolosESetoresDemoSeeder extends Seeder
             }
         }
 
-        // 4. HGVC: UTIs ← Farmácia de Dispensação E ← CAF (soluções padrão)
-        foreach ([$uti1, $uti2, $uti3a, $uti3b, $uti4, $utiP1, $utiP2, $utiNeo] as $uti) {
+        // 4. HGVC: UTIs -> Farmácia de Dispensação E -> CAF (soluções padrão)
+        foreach ([$uti1, $uti2, $uti3, $uti4, $utiP1, $utiP2, $utiNeo] as $uti) {
             if ($uti) {
                 $relacoes[] = [$uti, $dispensa];
                 $relacoes[] = [$uti, $caf];
