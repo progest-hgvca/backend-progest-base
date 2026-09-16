@@ -1588,4 +1588,114 @@ class RelatoriosController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Relatório Financeiro de Entradas
+     */
+    public function listEntradasFinanceiras(Request $request)
+    {
+        try {
+            $data = $request->all();
+            $filters = $data['filters'] ?? [];
+            
+            $query = DB::table('entrada')
+                ->join('itens_entrada', 'entrada.id', '=', 'itens_entrada.entrada_id')
+                ->join('produtos', 'itens_entrada.produto_id', '=', 'produtos.id')
+                ->join('setores', 'entrada.setor_id', '=', 'setores.id')
+                ->join('polos', 'setores.polo_id', '=', 'polos.id')
+                ->join('fornecedores', 'entrada.fornecedor_id', '=', 'fornecedores.id')
+                ->select(
+                    'entrada.data_entrada',
+                    'polos.nome as polo',
+                    'setores.nome as setor',
+                    'fornecedores.razao_social_nome as fornecedor',
+                    'produtos.nome as produto',
+                    'produtos.codigo_simpas',
+                    'itens_entrada.quantidade',
+                    'itens_entrada.valor_unitario',
+                    DB::raw('COALESCE(itens_entrada.quantidade * itens_entrada.valor_unitario, 0) as subtotal')
+                );
+
+            if (!empty($filters['date_from'])) {
+                $query->whereDate('entrada.data_entrada', '>=', $filters['date_from']);
+            }
+            if (!empty($filters['date_to'])) {
+                $query->whereDate('entrada.data_entrada', '<=', $filters['date_to']);
+            }
+            if (!empty($filters['setor_id'])) {
+                $query->where('entrada.setor_id', $filters['setor_id']);
+            }
+
+            $query->orderBy('entrada.data_entrada', 'desc');
+
+            $result = $query->paginate(30);
+
+            return response()->json(['status' => true, 'data' => $result]);
+
+        } catch (\Exception $e) {
+            return response()->json(['status' => false, 'message' => 'Erro ao listar relatório financeiro de entradas: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Relatório Financeiro de Saídas (Movimentações)
+     */
+    public function listSaidasFinanceiras(Request $request)
+    {
+        try {
+            $data = $request->all();
+            $filters = $data['filters'] ?? [];
+
+            // Obtém o custo pegando a entrada mais recente daquele lote e produto
+            $query = DB::table('movimentacao')
+                ->join('item_movimentacao', 'movimentacao.id', '=', 'item_movimentacao.movimentacao_id')
+                ->join('produtos', 'item_movimentacao.produto_id', '=', 'produtos.id')
+                ->join('setores as setor_destino', 'movimentacao.setor_destino_id', '=', 'setor_destino.id')
+                ->leftJoin('itens_entrada', function ($join) {
+                    $join->on('item_movimentacao.produto_id', '=', 'itens_entrada.produto_id')
+                         ->on('item_movimentacao.lote', '=', 'itens_entrada.lote');
+                })
+                ->select(
+                    'movimentacao.id as pedido_id',
+                    'movimentacao.created_at',
+                    'setor_destino.nome as setor_destino',
+                    'produtos.nome as produto',
+                    'produtos.codigo_simpas',
+                    'item_movimentacao.lote',
+                    'item_movimentacao.quantidade_liberada as quantidade',
+                    DB::raw('MAX(itens_entrada.valor_unitario) as valor_unitario'),
+                    DB::raw('MAX(itens_entrada.valor_unitario) * item_movimentacao.quantidade_liberada as valor_total')
+                )
+                ->where('movimentacao.tipo', 'S')
+                ->where('movimentacao.status_solicitacao', 'A') // Aprovados
+                ->groupBy(
+                    'movimentacao.id',
+                    'movimentacao.created_at',
+                    'setor_destino.nome',
+                    'produtos.nome',
+                    'produtos.codigo_simpas',
+                    'item_movimentacao.lote',
+                    'item_movimentacao.quantidade_liberada'
+                );
+
+            if (!empty($filters['date_from'])) {
+                $query->whereDate('movimentacao.created_at', '>=', $filters['date_from']);
+            }
+            if (!empty($filters['date_to'])) {
+                $query->whereDate('movimentacao.created_at', '<=', $filters['date_to']);
+            }
+            if (!empty($filters['setor_id'])) {
+                $query->where('movimentacao.setor_destino_id', $filters['setor_id']);
+            }
+
+            $query->orderBy('movimentacao.created_at', 'desc');
+
+            $result = $query->paginate(30);
+
+            return response()->json(['status' => true, 'data' => $result]);
+
+        } catch (\Exception $e) {
+            return response()->json(['status' => false, 'message' => 'Erro ao listar relatório financeiro de saídas: ' . $e->getMessage()], 500);
+        }
+    }
 }
