@@ -133,6 +133,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // --------------------------------------------------------
     // Movimentações — todas as rotas protegidas
     // --------------------------------------------------------
+    Route::post('/movimentacao/consumo-interno',       [MovimentacaoController::class, 'consumoInterno']);
     Route::post('/movimentacao/add',                   [MovimentacaoController::class, 'store']);
     Route::post('/movimentacao/create',                [MovimentacaoController::class, 'store']);
     Route::match(['get', 'post'], '/movimentacao/listBySetor',   [MovimentacaoController::class, 'listBySetor']);
@@ -143,6 +144,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/movimentacao/{id}/delete',           [MovimentacaoController::class, 'destroy']);
     Route::post('/movimentacoes/{id}/status',          [MovimentacaoController::class, 'updateStatus']);
     Route::post('/movimentacao/{id}/update-rascunho',  [MovimentacaoController::class, 'updateRascunho']);
+    Route::post('/movimentacao/{id}/devolver',         [MovimentacaoController::class, 'devolver']);
 
     // --------------------------------------------------------
     // Polo / Unidade — escrita protegida; leitura pública abaixo
@@ -201,6 +203,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/relatorios/usuarios/list',           [RelatoriosController::class, 'listUsuariosReport']);
     Route::post('/relatorios/medicamentos-controlados/list', [RelatoriosController::class, 'listMedicamentosControladosReport']);
 
+    // Relatórios Financeiros
+    Route::post('/relatorios/financeiro/entradas',     [RelatoriosController::class, 'listEntradasFinanceiras']);
+    Route::post('/relatorios/financeiro/saidas',       [RelatoriosController::class, 'listSaidasFinanceiras']);
 }); // fim middleware auth:sanctum
 
 // ============================================================

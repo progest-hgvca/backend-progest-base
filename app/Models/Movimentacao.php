@@ -33,4 +33,8 @@ class Movimentacao extends Model
     {
         return $this->belongsTo(User::class, 'aprovador_usuario_id');
     }
+    public function devolucoes()
+    {
+        return $this->hasMany(Devolucao::class);
+    }
 }
