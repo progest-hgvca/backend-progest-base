@@ -21,4 +21,8 @@ class ItemMovimentacao extends Model
     {
         return $this->belongsTo(EstoqueLote::class, 'lote');
     }
+    public function devolucoes()
+    {
+        return $this->hasMany(Devolucao::class);
+    }
 }

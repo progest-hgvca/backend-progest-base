@@ -111,13 +111,25 @@ class MovimentacaoController extends Controller
             return response()->json(['status' => false, 'message' => 'setor_id (ou unidade_id) é obrigatório'], 422);
         }
 
-        // Regras: rascunho aparece apenas para quem solicitou (destino). Pendentes aparecem para ambos.
-        $movs = Movimentacao::with(['usuario', 'setorOrigem', 'setorDestino', 'itens.produto'])
+        $query = Movimentacao::with(['usuario', 'setorOrigem', 'setorDestino', 'itens.produto', 'devolucoes.usuario'])
             ->where(function ($q) use ($setorId) {
                 $q->where('setor_origem_id', $setorId)
-                    ->orWhere('setor_destino_id', $setorId);
-            })
-            ->orderBy('data_hora', 'desc')
+                  ->orWhere('setor_destino_id', $setorId);
+            });
+
+        // Filtro opcional por lote
+        $lote = $request->input('lote');
+        if ($lote) {
+            $query->where(function($q) use ($lote) {
+                $q->whereHas('itens', function($iq) use ($lote) {
+                    $iq->where('lote', 'LIKE', '%' . $lote . '%');
+                })->orWhereHas('devolucoes', function($dq) use ($lote) {
+                    $dq->where('lote', 'LIKE', '%' . $lote . '%');
+                });
+            });
+        }
+
+        $movs = $query->orderBy('data_hora', 'desc')
             ->get()
             ->filter(function ($m) use ($setorId) {
                 if ($m->status_solicitacao === 'C') { // rascunho
@@ -134,20 +146,30 @@ class MovimentacaoController extends Controller
                 if ($m->relationLoaded('itens') && $m->itens->isNotEmpty()) {
                     $distinctCount = $m->itens->pluck('produto_id')->unique()->count();
                 }
-                $m->itens_diferentes_count = $distinctCount;
+                $m->total_itens = $distinctCount;
+
+                // Adiciona a flag tem_devolucao
+                $m->tem_devolucao = $m->devolucoes && $m->devolucoes->count() > 0;
+
                 return $m;
             });
 
-        return response()->json(['status' => true, 'data' => $movs]);
+        return response()->json([
+            'status' => true,
+            'data' => $movs
+        ]);
     }
 
     // Detalhes / itens da movimentação
     public function show($id)
     {
-        $mov = Movimentacao::with(['itens.produto', 'usuario', 'setorOrigem', 'setorDestino'])->find($id);
+        $mov = Movimentacao::with(['itens.produto.unidadeMedida', 'usuario', 'setorOrigem', 'setorDestino', 'aprovador:id,name', 'devolucoes.usuario'])->find($id);
         if (!$mov) {
             return response()->json(['status' => false, 'message' => 'Movimentação não encontrada'], 404);
         }
+
+        $mov->tem_devolucao = $mov->devolucoes && $mov->devolucoes->count() > 0;
+
         return response()->json(['status' => true, 'data' => $mov]);
     }
 
@@ -255,7 +277,13 @@ class MovimentacaoController extends Controller
                 foreach ($mov->itens as $item) {
                     $qtdLiberar = $quantidadesLiberadas[$item->id] ?? $item->quantidade_solicitada;
 
-                    if ($qtdLiberar <= 0) continue; // Pular itens com quantidade zero
+                    if ($qtdLiberar <= 0) {
+                        DB::rollBack();
+                        return response()->json([
+                            'status' => false,
+                            'message' => 'A quantidade aprovada deve ser estritamente maior que zero.'
+                        ], 422);
+                    }
 
                     // Se for devolução de um setor SEM controle de estoque físico (enfermarias, clínicas),
                     // não há estoque armazenado na origem para debitar; segue direto para recebimento no destino.
@@ -461,11 +489,11 @@ class MovimentacaoController extends Controller
                 }
 
                 $mov->status_solicitacao = 'A';
-                $mov->aprovador_usuario_id = $aprovadorId;
+                $mov->aprovador_usuario_id = auth()->id();
 
             } elseif ($action === 'reject') {
                 $mov->status_solicitacao = 'R';
-                $mov->aprovador_usuario_id = $aprovadorId;
+                $mov->aprovador_usuario_id = auth()->id();
             } elseif ($action === 'submit') {
                 // sair de rascunho para pendente
                 $mov->status_solicitacao = 'P';
@@ -782,5 +810,252 @@ class MovimentacaoController extends Controller
         }
 
         return $lotesConsumidos;
+    }
+    public function consumoInterno(Request $request)
+    {
+        $validated = Validator::make($request->all(), [
+            'produto_id' => 'required|integer',
+            'lote' => 'required|string',
+            'setor_id' => 'required|integer',
+            'quantidade' => 'required|numeric|gt:0',
+            'observacao' => 'nullable|string|max:255'
+        ]);
+
+        if ($validated->fails()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Erros de validação',
+                'erros' => $validated->errors()
+            ], 422);
+        }
+
+        $userId = auth()->id();
+        $setorId = $request->input('setor_id');
+        
+        $hasAccess = DB::table('usuario_setor')
+            ->where('usuario_id', $userId)
+            ->where('setor_id', $setorId)
+            ->exists();
+            
+        if (!$hasAccess) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Usuário sem permissão neste setor.'
+            ], 403);
+        }
+
+        $produtoId = $request->input('produto_id');
+        $lote = $request->input('lote');
+        $qtdConsumir = (float) $request->input('quantidade');
+        $observacao = $request->input('observacao');
+
+        try {
+            DB::beginTransaction();
+
+            $estoqueLote = EstoqueLote::where('produto_id', $produtoId)
+                ->where('lote', $lote)
+                ->where('setor_id', $setorId)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$estoqueLote) {
+                DB::rollBack();
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Lote não encontrado para este setor.'
+                ], 403);
+            }
+
+            if ($estoqueLote->quantidade_disponivel < $qtdConsumir) {
+                DB::rollBack();
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Saldo insuficiente no lote selecionado.',
+                    'erros' => [
+                        'quantidade' => ['Saldo disponível: ' . $estoqueLote->quantidade_disponivel]
+                    ]
+                ], 422);
+            }
+
+            $estoqueLote->quantidade_disponivel -= $qtdConsumir;
+            $estoqueLote->save();
+
+            $estoque = Estoque::where('produto_id', $produtoId)
+                ->where('setor_id', $setorId)
+                ->lockForUpdate()
+                ->first();
+
+            if ($estoque) {
+                $estoque->quantidade_atual -= $qtdConsumir;
+                $estoque->status_disponibilidade = $estoque->quantidade_atual > 0 ? 'D' : 'I';
+                $estoque->save();
+            }
+
+            $mov = Movimentacao::create([
+                'usuario_id' => $userId,
+                'setor_origem_id' => $setorId,
+                'setor_destino_id' => $setorId,
+                'tipo' => 'C',
+                'data_hora' => now(),
+                'observacao' => 'Baixa Interna/Consumo: ' . $observacao,
+                'status_solicitacao' => 'A',
+                'aprovador_usuario_id' => $userId
+            ]);
+
+            ItemMovimentacao::create([
+                'movimentacao_id' => $mov->id,
+                'produto_id' => $produtoId,
+                'quantidade_solicitada' => $qtdConsumir,
+                'quantidade_liberada' => $qtdConsumir,
+                'lote' => json_encode([
+                    ['lote' => $lote, 'quantidade' => $qtdConsumir]
+                ])
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Consumo interno registrado com sucesso!',
+                'data' => $mov
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Erro em consumoInterno: ' . $e->getMessage());
+            return response()->json([
+                'status' => false,
+                'message' => 'Erro ao processar consumo interno.'
+            ], 500);
+        }
+    }
+    public function devolver(Request $request, $id)
+    {
+        $validated = Validator::make($request->all(), [
+            'item_movimentacao_id' => 'required|integer',
+            'quantidade' => 'required|numeric|gt:0',
+            'lote' => 'required|string',
+            'motivo' => 'nullable|string|max:255'
+        ]);
+
+        if ($validated->fails()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Erros de validação',
+                'erros' => $validated->errors()
+            ], 422);
+        }
+
+        $movimentacao = Movimentacao::with('itens')->find($id);
+        if (!$movimentacao) {
+            return response()->json(['status' => false, 'message' => 'Movimentação não encontrada.'], 404);
+        }
+
+        $itemMov = $movimentacao->itens->where('id', $request->input('item_movimentacao_id'))->first();
+        if (!$itemMov) {
+            return response()->json(['status' => false, 'message' => 'Item não pertence a esta movimentação.'], 422);
+        }
+
+        $quantidadeADevolver = (float) $request->input('quantidade');
+        $loteNome = $request->input('lote');
+        $userId = auth()->id();
+        $motivo = $request->input('motivo');
+
+        $lotesOriginal = json_decode($itemMov->lote, true);
+        if (!is_array($lotesOriginal)) {
+             return response()->json(['status' => false, 'message' => 'Lote original inválido no item.'], 422);
+        }
+
+        $qtdOriginalNoLote = 0;
+        foreach ($lotesOriginal as $lot) {
+            if (($lot['lote'] ?? null) === $loteNome) {
+                $qtdOriginalNoLote = (float) ($lot['quantidade'] ?? $lot['qtd'] ?? 0);
+                break;
+            }
+        }
+
+        if ($qtdOriginalNoLote <= 0) {
+            return response()->json(['status' => false, 'message' => 'Este lote não foi utilizado no atendimento deste item.'], 422);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $jaDevolvida = \App\Models\Devolucao::where('item_movimentacao_id', $itemMov->id)
+                ->where('lote', $loteNome)
+                ->sum('quantidade');
+
+            if ($quantidadeADevolver + $jaDevolvida > $qtdOriginalNoLote) {
+                DB::rollBack();
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Quantidade a devolver excede a quantidade atendida no pedido para este lote.',
+                    'erros' => [
+                        'quantidade' => ['Quantidade máxima permitida: ' . ($qtdOriginalNoLote - $jaDevolvida)]
+                    ]
+                ], 422);
+            }
+
+            // O estoque/lote pertence ao setor_origem_id da movimentacao (o distribuidor)
+            $estoqueLote = \App\Models\EstoqueLote::firstOrCreate(
+                [
+                    'setor_id' => $movimentacao->setor_origem_id,
+                    'produto_id' => $itemMov->produto_id,
+                    'lote' => $loteNome,
+                ],
+                [
+                    'quantidade_disponivel' => 0
+                ]
+            );
+
+            // Bloqueia e incrementa
+            $estoqueLote = \App\Models\EstoqueLote::where('id', $estoqueLote->id)->lockForUpdate()->first();
+            $estoqueLote->quantidade_disponivel += $quantidadeADevolver;
+            $estoqueLote->save();
+
+            // Bloqueia e incrementa estoque geral
+            $estoque = \App\Models\Estoque::where('produto_id', $itemMov->produto_id)
+                ->where('setor_id', $movimentacao->setor_origem_id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($estoque) {
+                $estoque->quantidade_atual += $quantidadeADevolver;
+                $estoque->status_disponibilidade = $estoque->quantidade_atual > 0 ? 'D' : 'I';
+                $estoque->save();
+            } else {
+                \App\Models\Estoque::create([
+                    'produto_id' => $itemMov->produto_id,
+                    'setor_id' => $movimentacao->setor_origem_id,
+                    'quantidade_atual' => $quantidadeADevolver,
+                    'quantidade_minima' => 0,
+                    'status_disponibilidade' => 'D'
+                ]);
+            }
+
+            \App\Models\Devolucao::create([
+                'movimentacao_id' => $movimentacao->id,
+                'item_movimentacao_id' => $itemMov->id,
+                'lote' => $loteNome,
+                'quantidade' => $quantidadeADevolver,
+                'motivo' => $motivo,
+                'usuario_id' => $userId
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Devolução registrada com sucesso!'
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Erro em devolver: ' . $e->getMessage());
+            return response()->json([
+                'status' => false,
+                'message' => 'Erro ao processar devolução.'
+            ], 500);
+        }
     }
 }
