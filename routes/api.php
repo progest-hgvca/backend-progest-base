@@ -65,6 +65,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/usuarioSetor/delete',           [UsuarioSetorController::class, 'delete']);
     Route::post('/usuarioSetor/listarPorSetor',   [UsuarioSetorController::class, 'listarPorSetor']);
     Route::post('/usuarioSetor/listarPorUsuario', [UsuarioSetorController::class, 'listarPorUsuario']);
+    Route::match(['get', 'post'], '/usuario-setor/listar-por-usuario', [UsuarioSetorController::class, 'listarPorUsuario']);
     // @deprecated — manter para compatibilidade com frontend legado
     Route::post('/usuarioSetor/create',         [UsuarioSetorController::class, 'add']);
     Route::post('/usuarioSetor/listBySetor',    [UsuarioSetorController::class, 'listarPorSetor']);
@@ -120,7 +121,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // --------------------------------------------------------
     Route::post('/produtos/add',            [ProdutoController::class, 'add']);
     Route::post('/produtos/update',         [ProdutoController::class, 'update']);
-    Route::post('/produtos/delete/{id}',    [ProdutoController::class, 'delete']);
+    Route::match(['post', 'delete'], '/produtos/delete/{id}', [ProdutoController::class, 'delete']);
     Route::post('/produtos/toggleStatus',   [ProdutoController::class, 'toggleStatus']);
 
     // --------------------------------------------------------

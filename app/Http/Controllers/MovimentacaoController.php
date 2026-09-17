@@ -55,6 +55,37 @@ class MovimentacaoController extends Controller
             return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
         }
 
+        // Validações de Regras de Negócio de Distribuição e Estoque
+        if (in_array($data['tipo'] ?? '', ['S', 'T'])) {
+            if (empty($data['setor_origem_id'])) {
+                return response()->json(['status' => false, 'message' => 'O setor de origem (fornecedor/distribuidor) é obrigatório.'], 422);
+            }
+            if (!empty($data['setor_destino_id']) && $data['setor_origem_id'] == $data['setor_destino_id']) {
+                return response()->json(['status' => false, 'message' => 'O setor de origem não pode ser igual ao setor solicitante/destino.'], 422);
+            }
+            $setorOrigem = \App\Models\Setores::find($data['setor_origem_id']);
+            if (!$setorOrigem || !$setorOrigem->estoque) {
+                return response()->json(['status' => false, 'message' => 'O setor de origem selecionado não possui controle de estoque para fornecer itens.'], 422);
+            }
+
+            if (!empty($data['setor_destino_id'])) {
+                $setorDestino = \App\Models\Setores::find($data['setor_destino_id']);
+                $ehDistribuidorAutorizado = DB::table('setor_distribuidor')
+                    ->where('setor_solicitante_id', $data['setor_destino_id'])
+                    ->where('setor_distribuidor_id', $data['setor_origem_id'])
+                    ->exists();
+
+                $remanejamentoEntreEstoque = ($setorOrigem->estoque && $setorDestino && $setorDestino->estoque);
+
+                if (!$ehDistribuidorAutorizado && !$remanejamentoEntreEstoque) {
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'O setor de origem não está configurado como distribuidor autorizado para este setor solicitante.'
+                    ], 422);
+                }
+            }
+        }
+
         // Validações específicas para Devolução ('D')
         if (($data['tipo'] ?? '') === 'D') {
             if (empty($data['setor_destino_id'])) {
@@ -63,6 +94,19 @@ class MovimentacaoController extends Controller
             $setorDestino = \App\Models\Setores::find($data['setor_destino_id']);
             if (!$setorDestino || !$setorDestino->estoque) {
                 return response()->json(['status' => false, 'message' => 'Devoluções só podem ser enviadas para setores com controle de estoque ativo (farmácias/almoxarifados).'], 422);
+            }
+            if (!empty($data['setor_origem_id'])) {
+                $ehDistribuidor = DB::table('setor_distribuidor')
+                    ->where('setor_solicitante_id', $data['setor_origem_id'])
+                    ->where('setor_distribuidor_id', $data['setor_destino_id'])
+                    ->exists();
+                $remanejamentoEntreEstoque = ($setorDestino->estoque && \App\Models\Setores::where('id', $data['setor_origem_id'])->where('estoque', true)->exists());
+                if (!$ehDistribuidor && !$remanejamentoEntreEstoque) {
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'Devoluções só podem ser realizadas para o distribuidor autorizado do setor solicitante.'
+                    ], 422);
+                }
             }
         }
 
@@ -262,10 +306,25 @@ class MovimentacaoController extends Controller
                 $quantidadesLiberadas = [];
                 if (!empty($itens) && is_array($itens)) {
                     foreach ($itens as $itemData) {
+                        if (isset($itemData['quantidade_liberada']) && (float) $itemData['quantidade_liberada'] <= 0) {
+                            DB::rollBack();
+                            return response()->json([
+                                'status' => false,
+                                'message' => 'A quantidade aprovada deve ser estritamente maior que zero.'
+                            ], 422);
+                        }
                         if (isset($itemData['id']) && isset($itemData['quantidade_liberada'])) {
-                $quantidadesLiberadas[$itemData['id']] = (float) $itemData['quantidade_liberada'];
+                            $quantidadesLiberadas[$itemData['id']] = (float) $itemData['quantidade_liberada'];
                         }
                     }
+                }
+
+                if ($mov->itens->isEmpty()) {
+                    DB::rollBack();
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'Não é possível aprovar uma movimentação sem itens.'
+                    ], 422);
                 }
  
                 $isDevolucao = ($mov->tipo === 'D');
@@ -592,6 +651,38 @@ class MovimentacaoController extends Controller
 
         if ($validator->fails()) {
             return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
+        }
+
+        $origemId = $data['setor_origem_id'] ?? $mov->setor_origem_id;
+        $destinoId = $mov->setor_destino_id;
+
+        if (in_array($mov->tipo, ['S', 'T'])) {
+            if (!empty($origemId) && !empty($destinoId) && $origemId == $destinoId) {
+                return response()->json(['status' => false, 'message' => 'O setor de origem não pode ser igual ao setor solicitante/destino.'], 422);
+            }
+            if (!empty($origemId)) {
+                $setorOrigem = \App\Models\Setores::find($origemId);
+                if (!$setorOrigem || !$setorOrigem->estoque) {
+                    return response()->json(['status' => false, 'message' => 'O setor de origem selecionado não possui controle de estoque para fornecer itens.'], 422);
+                }
+
+                if (!empty($destinoId)) {
+                    $setorDestino = \App\Models\Setores::find($destinoId);
+                    $ehDistribuidorAutorizado = DB::table('setor_distribuidor')
+                        ->where('setor_solicitante_id', $destinoId)
+                        ->where('setor_distribuidor_id', $origemId)
+                        ->exists();
+
+                    $remanejamentoEntreEstoque = ($setorOrigem->estoque && $setorDestino && $setorDestino->estoque);
+
+                    if (!$ehDistribuidorAutorizado && !$remanejamentoEntreEstoque) {
+                        return response()->json([
+                            'status' => false,
+                            'message' => 'O setor de origem não está configurado como distribuidor autorizado para este setor solicitante.'
+                        ], 422);
+                    }
+                }
+            }
         }
 
         try {
@@ -942,7 +1033,8 @@ class MovimentacaoController extends Controller
             return response()->json([
                 'status' => false,
                 'message' => 'Erros de validação',
-                'erros' => $validated->errors()
+                'erros' => $validated->errors(),
+                'errors' => $validated->errors()
             ], 422);
         }
 

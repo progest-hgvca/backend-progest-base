@@ -110,6 +110,17 @@ class EntradaController extends Controller
             ], 400);
         }
 
+        // Apenas distribuidores centrais (ou setores com papel distribuidor) podem receber NF de fornecedores externos.
+        $ehDistribuidorCentral = (str_contains(strtoupper($setor->nome), 'CAF') || str_contains(strtoupper($setor->nome), 'ALMOXARIFADO') || str_contains(strtoupper($setor->nome), 'CENTRAL'));
+        $ehDistribuidor = DB::table('setor_distribuidor')->where('setor_distribuidor_id', $setor->id)->exists();
+
+        if (!$ehDistribuidorCentral && !$ehDistribuidor) {
+            return response()->json([
+                'status' => false,
+                'message' => 'O setor informado não é um distribuidor autorizado para recebimento de notas fiscais externas de fornecedores.'
+            ], 422);
+        }
+
         try {
             $entrada = DB::transaction(function () use ($data, $setor) {
                 $entrada = Entrada::create([

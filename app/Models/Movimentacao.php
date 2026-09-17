@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Movimentacao extends Model
 {
+    use HasFactory;
+
     protected $table = 'movimentacao';
     protected $fillable = ['usuario_id', 'setor_origem_id', 'setor_destino_id', 'tipo', 'data_hora', 'observacao', 'status_solicitacao', 'aprovador_usuario_id'];
 
