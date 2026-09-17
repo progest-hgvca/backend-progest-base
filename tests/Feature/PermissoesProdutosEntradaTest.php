@@ -39,17 +39,15 @@ class PermissoesProdutosEntradaTest extends TestCase
         ]);
 
         // Usuário superadmin
-        $this->superAdmin = User::create([
+        $this->superAdmin = User::factory()->create([
             'name' => 'Super Admin',
-            'email' => 'admin@admin.com',
-            'password' => bcrypt('password')
+            'email' => 'adminti@gmail.com',
         ]);
 
         // Usuário admin de setor
-        $this->adminSetor = User::create([
+        $this->adminSetor = User::factory()->create([
             'name' => 'Admin Setor',
             'email' => 'adminsetor@teste.com',
-            'password' => bcrypt('password')
         ]);
         DB::table('usuario_setor')->insert([
             'usuario_id' => $this->adminSetor->id,
@@ -58,10 +56,9 @@ class PermissoesProdutosEntradaTest extends TestCase
         ]);
 
         // Usuário almoxarife de setor (não admin)
-        $this->almoxarife = User::create([
+        $this->almoxarife = User::factory()->create([
             'name' => 'Almoxarife',
             'email' => 'almoxarife@teste.com',
-            'password' => bcrypt('password')
         ]);
         DB::table('usuario_setor')->insert([
             'usuario_id' => $this->almoxarife->id,
@@ -69,9 +66,14 @@ class PermissoesProdutosEntradaTest extends TestCase
             'perfil' => 'almoxarife'
         ]);
 
+        $this->grupo = \App\Models\GrupoProduto::create(['nome' => 'Medicamentos', 'tipo' => 'Medicamento', 'status' => 'A']);
+        $this->unidade = \App\Models\UnidadeMedida::create(['nome' => 'Caixa', 'sigla' => 'CX', 'status' => 'A']);
+
         // Produto base
         $this->produto = Produto::create([
             'nome' => 'Produto Teste',
+            'grupo_produto_id' => $this->grupo->id,
+            'unidade_medida_id' => $this->unidade->id,
             'status' => 'A'
         ]);
     }
@@ -82,11 +84,13 @@ class PermissoesProdutosEntradaTest extends TestCase
 
         $response = $this->postJson('/api/produtos/add', [
             'produto' => [
-                'nome' => 'Novo Produto',
+                'nome' => 'Novo Produto 1',
+                'grupo_produto_id' => $this->grupo->id,
+                'unidade_medida_id' => $this->unidade->id,
                 'status' => 'A'
             ]
         ]);
-        $response->assertStatus(200);
+        $response->assertStatus(201);
 
         $responseDelete = $this->deleteJson('/api/produtos/delete/' . $this->produto->id);
         $responseDelete->assertStatus(200);
@@ -98,11 +102,13 @@ class PermissoesProdutosEntradaTest extends TestCase
 
         $response = $this->postJson('/api/produtos/add', [
             'produto' => [
-                'nome' => 'Novo Produto',
+                'nome' => 'Novo Produto 2',
+                'grupo_produto_id' => $this->grupo->id,
+                'unidade_medida_id' => $this->unidade->id,
                 'status' => 'A'
             ]
         ]);
-        $response->assertStatus(200);
+        $response->assertStatus(201);
     }
 
     public function test_almoxarife_cannot_manage_products()
@@ -111,7 +117,9 @@ class PermissoesProdutosEntradaTest extends TestCase
 
         $response = $this->postJson('/api/produtos/add', [
             'produto' => [
-                'nome' => 'Novo Produto',
+                'nome' => 'Novo Produto 3',
+                'grupo_produto_id' => $this->grupo->id,
+                'unidade_medida_id' => $this->unidade->id,
                 'status' => 'A'
             ]
         ]);

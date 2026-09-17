@@ -33,7 +33,7 @@ class EntradaControllerTest extends TestCase
 
         $this->setor = Setores::create([
             'polo_id' => $polo->id,
-            'nome' => 'Setor Entrada Teste',
+            'nome' => 'CAF - Central de Abastecimento Farmacêutico Teste',
             'estoque' => true,
             'tipo' => 'Medicamento',
             'status' => 'A'

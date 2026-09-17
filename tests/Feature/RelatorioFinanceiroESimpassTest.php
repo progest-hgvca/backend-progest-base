@@ -11,7 +11,7 @@ use App\Models\Polo;
 use App\Models\Produto;
 use App\Models\Entrada;
 use App\Models\Movimentacao;
-use App\Models\Fornecedores;
+use App\Models\Fornecedor;
 use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 
@@ -40,18 +40,19 @@ class RelatorioFinanceiroESimpassTest extends TestCase
             'status' => 'A'
         ]);
 
-        $this->fornecedor = Fornecedores::create([
+        $this->fornecedor = Fornecedor::create([
             'razao_social_nome' => 'Fornecedor A',
+            'tipo_pessoa' => 'J',
+            'cnpj' => '12345678000199',
             'status' => 'A'
         ]);
 
-        $this->superAdmin = User::create([
+        $this->superAdmin = User::factory()->create([
             'name' => 'Super Admin',
-            'email' => 'admin@admin.com',
-            'password' => bcrypt('password')
+            'email' => 'adminti@gmail.com',
         ]);
 
-        $this->produto = Produto::create([
+        $this->produto = Produto::factory()->create([
             'nome' => 'Produto Teste',
             'codigo_simpas' => 'SIMPAS123',
             'status' => 'A'
@@ -59,6 +60,7 @@ class RelatorioFinanceiroESimpassTest extends TestCase
 
         // Criar Entrada e Itens Entrada com Valor Unitário
         $this->entrada = Entrada::create([
+            'nota_fiscal' => 'NF-12345',
             'setor_id' => $this->setorFornecedor->id,
             'fornecedor_id' => $this->fornecedor->id,
             'data_entrada' => now(),
@@ -112,7 +114,6 @@ class RelatorioFinanceiroESimpassTest extends TestCase
         Sanctum::actingAs($this->superAdmin, ['*']);
 
         $response = $this->postJson('/api/relatorios/financeiro/entradas', []);
-        
         $response->assertStatus(200);
         
         $dados = $response->json('data.data');

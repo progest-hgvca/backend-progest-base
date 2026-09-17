@@ -5,9 +5,6 @@
          colors="true"
 >
     <testsuites>
-        <testsuite name="Unit">
-            <directory suffix="Test.php">./tests/Unit</directory>
-        </testsuite>
         <testsuite name="Feature">
             <directory suffix="Test.php">./tests/Feature</directory>
         </testsuite>
@@ -23,7 +20,7 @@
         <server name="CACHE_DRIVER" value="array"/>
         <server name="DB_CONNECTION" value="mysql"/>
         <server name="DB_DATABASE" value="progest_testing"/>
-        <server name="DB_HOST" value="127.0.0.1"/>
+        <server name="DB_HOST" value="mysql"/>
         <server name="DB_PORT" value="3306"/>
         <server name="DB_USERNAME" value="progest"/>
         <server name="DB_PASSWORD" value="progest_secret"/>

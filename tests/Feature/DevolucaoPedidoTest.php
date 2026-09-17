@@ -27,7 +27,7 @@ class DevolucaoPedidoTest extends TestCase
         $this->setorConsumidor = Setores::factory()->create();
 
         DB::table('usuario_setor')->insert([
-            ['usuario_id' => $this->user->id, 'setor_id' => $this->setorConsumidor->id, 'perfil' => 'comum'],
+            ['usuario_id' => $this->user->id, 'setor_id' => $this->setorConsumidor->id, 'perfil' => 'solicitante'],
             ['usuario_id' => $this->user->id, 'setor_id' => $this->setorDistribuidor->id, 'perfil' => 'admin'],
         ]);
 
@@ -66,14 +66,16 @@ class DevolucaoPedidoTest extends TestCase
             'produto_id' => $this->produto->id,
             'setor_id' => $this->setorDistribuidor->id,
             'lote' => 'LOTE-TESTE-1',
-            'quantidade_disponivel' => 25
+            'quantidade_disponivel' => 25,
+            'data_vencimento' => now()->addYear()->toDateString()
         ]);
         
         EstoqueLote::create([
             'produto_id' => $this->produto->id,
             'setor_id' => $this->setorDistribuidor->id,
             'lote' => 'LOTE-TESTE-2',
-            'quantidade_disponivel' => 25
+            'quantidade_disponivel' => 25,
+            'data_vencimento' => now()->addYear()->toDateString()
         ]);
     }
 
@@ -117,7 +119,7 @@ class DevolucaoPedidoTest extends TestCase
                  ->assertJsonPath('status', true);
 
         // Confirma se o lote do distribuidor teve saldo incrementado (+3)
-        $this->assertDatabaseHas('estoque_lotes', [
+        $this->assertDatabaseHas('estoque_lote', [
             'produto_id' => $this->produto->id,
             'setor_id' => $this->setorDistribuidor->id,
             'lote' => 'LOTE-TESTE-1',

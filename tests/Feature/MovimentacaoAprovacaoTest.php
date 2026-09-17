@@ -17,6 +17,12 @@ class MovimentacaoAprovacaoTest extends TestCase
         $user = User::factory()->create();
         $movimentacao = Movimentacao::factory()->create(['status_solicitacao' => 'P']);
 
+        DB::table('usuario_setor')->insert([
+            'usuario_id' => $user->id,
+            'setor_id' => $movimentacao->setor_origem_id,
+            'perfil' => 'admin'
+        ]);
+
         $response = $this->actingAs($user)->postJson("/api/movimentacao/{$movimentacao->id}/process", [
             'action' => 'approve',
             'itens' => [
@@ -45,10 +51,35 @@ class MovimentacaoAprovacaoTest extends TestCase
             'perfil' => 'admin'
         ]);
 
+        $produto = \App\Models\Produto::factory()->create();
+        $item = \App\Models\ItemMovimentacao::create([
+            'movimentacao_id' => $movimentacao->id,
+            'produto_id' => $produto->id,
+            'quantidade_solicitada' => 10,
+            'quantidade_liberada' => 0
+        ]);
+        \App\Models\Estoque::updateOrCreate([
+            'setor_id' => $movimentacao->setor_origem_id,
+            'produto_id' => $produto->id,
+        ], [
+            'quantidade_atual' => 50,
+            'quantidade_minima' => 10,
+            'status_disponibilidade' => 'D'
+        ]);
+        \App\Models\EstoqueLote::create([
+            'setor_id' => $movimentacao->setor_origem_id,
+            'produto_id' => $produto->id,
+            'lote' => 'LOTE-APROV-1',
+            'quantidade_disponivel' => 50,
+            'data_vencimento' => now()->addYear()->toDateString()
+        ]);
+        
+
+
         $response = $this->actingAs($user)->postJson("/api/movimentacao/{$movimentacao->id}/process", [
             'action' => 'approve',
             'itens' => [
-                ['id' => 1, 'quantidade_liberada' => 10]
+                ['id' => $item->id, 'quantidade_liberada' => 10]
             ]
         ]);
 
