@@ -79,31 +79,50 @@ class PolosESetoresDemoSeeder extends Seeder
             // HGVC — COM ESTOQUE
             $s($hgvc->id, 'CENTRAL DE ABASTECIMENTO FARMACÊUTICO (CAF)', true),
             $s($hgvc->id, 'FARMÁCIA DE DISPENSAÇÃO',                     true),
+            $s($hgvc->id, 'SATÉLITE DA EMERGÊNCIA',                      true),
             
             // HGVC — SEM ESTOQUE: Assistenciais/Clínicas/UTIs
-            $s($hgvc->id, 'CENTRO CIRÚRGICO', false, 'Ambos'),
-            $s($hgvc->id, 'CLÍNICA MÉDICA',   false, 'Ambos'),
-            $s($hgvc->id, 'UTI 1',            false, 'Ambos'),
-            $s($hgvc->id, 'UTI 2',            false, 'Ambos'),
-            $s($hgvc->id, 'UTI 3',            false, 'Ambos'),
-            $s($hgvc->id, 'UTI 4',            false, 'Ambos'),
-            $s($hgvc->id, 'UTI PED1',         false, 'Ambos'),
-            $s($hgvc->id, 'UTI PED 2',        false, 'Ambos'),
-            $s($hgvc->id, 'UTI NEO',          false, 'Ambos'),
-            $s($hgvc->id, 'SALA VERMELHA',    false, 'Ambos'),
+            $s($hgvc->id, 'CENTRO CIRÚRGICO',    false, 'Ambos'),
+            $s($hgvc->id, 'CLÍNICA MÉDICA',      false, 'Ambos'),
+            $s($hgvc->id, 'CLÍNICA CIRÚRGICA',   false, 'Ambos'),
+            $s($hgvc->id, 'PEDIATRIA',           false, 'Ambos'),
+            $s($hgvc->id, 'UTI 1',               false, 'Ambos'),
+            $s($hgvc->id, 'UTI 2',               false, 'Ambos'),
+            $s($hgvc->id, 'UTI 3',               false, 'Ambos'),
+            $s($hgvc->id, 'UTI 4',               false, 'Ambos'),
+            $s($hgvc->id, 'UTI PED1',            false, 'Ambos'),
+            $s($hgvc->id, 'UTI PED 2',           false, 'Ambos'),
+            $s($hgvc->id, 'UTI NEO',             false, 'Ambos'),
+            $s($hgvc->id, 'SALA VERMELHA',       false, 'Ambos'),
+            $s($hgvc->id, 'SALA DE TRAUMA',       false, 'Ambos'),
+            $s($hgvc->id, 'OBSERVAÇÃO MASCULINA', false, 'Ambos'),
+            $s($hgvc->id, 'OBSERVAÇÃO FEMININA',  false, 'Ambos'),
+            $s($hgvc->id, 'SALA DE MEDICAÇÃO',    false, 'Ambos'),
 
             // HGVC — SEM ESTOQUE: Administrativos
             $s($hgvc->id, 'RECEPÇÃO',         false, 'Material'),
             $s($hgvc->id, 'RH',               false, 'Material'),
             $s($hgvc->id, 'ALMOXARIFADO',     false, 'Material'),
 
-            // HAP (Apenas para ter outro polo)
+            // HAP (Polo Afrânio Peixoto)
             $s($hap->id, 'FARMÁCIA CENTRAL',  true),
+            $s($hap->id, 'FARMÁCIA SATÉLITE', true),
             $s($hap->id, 'UTI 5',             false, 'Ambos'),
+            $s($hap->id, 'UTI 6A',            false, 'Ambos'),
+            $s($hap->id, 'UTI 6B',            false, 'Ambos'),
+            $s($hap->id, 'INTERNAÇÃO',        false, 'Ambos'),
+            $s($hap->id, 'AMBULATÓRIO',       false, 'Ambos'),
             $s($hap->id, 'COORDENAÇÃO',       false, 'Material'),
+            $s($hap->id, 'RECEPÇÃO',          false, 'Material'),
 
-            // UPA
-            $s($upa->id, 'FARMÁCIA', true),
+            // HCS (Polo Crescêncio Silveira)
+            $s($hcs->id, 'FARMÁCIA',             true),
+            $s($hcs->id, 'CLÍNICA MÉDICA',       false, 'Ambos'),
+            $s($hcs->id, 'CLÍNICA PSIQUIÁTRICA', false, 'Ambos'),
+
+            // UPA (Polo UPA)
+            $s($upa->id, 'FARMÁCIA',        true),
+            $s($upa->id, 'EMERGÊNCIA UPA',  false, 'Ambos'),
         ];
 
         foreach ($setores as $setor) {
@@ -244,12 +263,18 @@ class PolosESetoresDemoSeeder extends Seeder
 
         // 8. HCS: Clínicas ← Farmácia (HCS)
         foreach ([$clinMedHCS, $clinPsiHCS] as $clinHCS) {
-            if ($clinHCS) {
+            if ($clinHCS && $farmHCS) {
                 $relacoes[] = [$clinHCS, $farmHCS];
             }
         }
 
-        // 9. HGVC: Setores Administrativos e Assistenciais ← CAF
+        // 9. UPA: Emergência UPA ← Farmácia (UPA)
+        $emergUPA = $get('EMERGÊNCIA UPA', $upa->id);
+        if ($emergUPA && $farmUPA) {
+            $relacoes[] = [$emergUPA, $farmUPA];
+        }
+
+        // 10. HGVC: Setores Administrativos e Assistenciais ← CAF
         $nomesAdminAssist = [
             'DIRETORIAS', 'OUVIDORIA', 'TRANSPORTE', 'MANUTENÇÃO PREDIAL',
             'MANUTENÇÃO DE EQUIPAMENTOS', 'CME', 'NUTRIÇÃO', 'NEP', 'LABORATÓRIO',

@@ -7,6 +7,7 @@ use App\Models\Entrada;
 use App\Models\ItensEntrada;
 use App\Models\Movimentacao;
 use App\Models\ItemMovimentacao;
+use App\Models\Devolucao;
 use App\Models\Setores;
 use App\Models\Fornecedor;
 use App\Models\Produto;
@@ -42,6 +43,21 @@ class DadosFakeRelatoriosSeeder extends Seeder
         $relacoes = DB::table('setor_distribuidor')->get();
         foreach ($relacoes as $rel) {
             $this->distribuidoresMap[$rel->setor_solicitante_id][] = $rel->setor_distribuidor_id;
+        }
+
+        // Limpar tabelas simuladas para garantir idempotência do seeder
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+        }
+        DB::table('devolucoes')->truncate();
+        DB::table('item_movimentacao')->truncate();
+        DB::table('movimentacao')->truncate();
+        DB::table('itens_entrada')->truncate();
+        DB::table('entrada')->truncate();
+        DB::table('estoque_lote')->truncate();
+        DB::table('estoque')->truncate();
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement('SET FOREIGN_KEY_CHECKS=1;');
         }
 
         DB::transaction(function () {
@@ -100,47 +116,51 @@ class DadosFakeRelatoriosSeeder extends Seeder
                 $produtosSelecionados = $produtosSelecionados->merge($controlados)->unique('id');
             }
 
-            // Criar 6 a 8 Notas Fiscais distribuídas ao longo dos últimos 90 dias
-            $diasHistorico = [85, 70, 56, 42, 28, 14, 3];
+            $ehDistribuidorCentral = str_contains(strtoupper($setor->nome), 'CAF') || (str_contains(strtoupper($setor->nome), 'CENTRAL') && !str_contains(strtoupper($setor->nome), 'SATÉLITE'));
 
-            foreach ($diasHistorico as $diasAtras) {
-                $dataEntrada = $now->copy()->subDays($diasAtras)->setTime(rand(8, 17), rand(10, 50));
-                $nfSeq += rand(3, 12);
-                $nfNumero = 'NF-' . str_pad($nfSeq, 6, '0', STR_PAD_LEFT) . '/' . $anoAtual;
+            if ($ehDistribuidorCentral) {
+                // Criar 6 a 8 Notas Fiscais distribuídas ao longo dos últimos 90 dias
+                $diasHistorico = [85, 70, 56, 42, 28, 14, 3];
 
-                // Selecionar fornecedor adequado
-                $fornecedor = $this->selecionarFornecedorApropriado($tipoSetor);
+                foreach ($diasHistorico as $diasAtras) {
+                    $dataEntrada = $now->copy()->subDays($diasAtras)->setTime(rand(8, 17), rand(10, 50));
+                    $nfSeq += rand(3, 12);
+                    $nfNumero = 'NF-' . str_pad($nfSeq, 6, '0', STR_PAD_LEFT) . '/' . $anoAtual;
 
-                $entrada = Entrada::create([
-                    'nota_fiscal'   => $nfNumero,
-                    'setor_id'      => $setor->id,
-                    'fornecedor_id' => $fornecedor->id,
-                    'created_at'    => $dataEntrada,
-                    'updated_at'    => $dataEntrada,
-                ]);
+                    // Selecionar fornecedor adequado
+                    $fornecedor = $this->selecionarFornecedorApropriado($tipoSetor);
 
-                // 3 a 6 itens por Nota Fiscal
-                $itensQtd = min(rand(3, 6), $produtosSelecionados->count());
-                $itensAmostra = $produtosSelecionados->random($itensQtd);
-
-                foreach ($itensAmostra as $prod) {
-                    $quantidadeNF = rand(80, 400);
-                    $valorUnitario = $this->calcularPrecoRealista($prod);
-                    $codLote = 'L' . substr($anoAtual, 2) . str_pad(rand(101, 999), 3, '0', STR_PAD_LEFT);
-                    $dataVenc = $dataEntrada->copy()->addMonths(rand(14, 34))->toDateString();
-                    $dataFabr = $dataEntrada->copy()->subMonths(rand(1, 3))->toDateString();
-
-                    ItensEntrada::create([
-                        'entrada_id'      => $entrada->id,
-                        'produto_id'      => $prod->id,
-                        'quantidade'      => $quantidadeNF,
-                        'valor_unitario'  => $valorUnitario,
-                        'lote'            => $codLote,
-                        'data_fabricacao' => $dataFabr,
-                        'data_vencimento' => $dataVenc,
-                        'created_at'      => $dataEntrada,
-                        'updated_at'      => $dataEntrada,
+                    $entrada = Entrada::create([
+                        'nota_fiscal'   => $nfNumero,
+                        'setor_id'      => $setor->id,
+                        'fornecedor_id' => $fornecedor->id,
+                        'created_at'    => $dataEntrada,
+                        'updated_at'    => $dataEntrada,
                     ]);
+
+                    // 3 a 6 itens por Nota Fiscal
+                    $itensQtd = min(rand(3, 6), $produtosSelecionados->count());
+                    $itensAmostra = $produtosSelecionados->random($itensQtd);
+
+                    foreach ($itensAmostra as $prod) {
+                        $quantidadeNF = rand(80, 400);
+                        $valorUnitario = $this->calcularPrecoRealista($prod);
+                        $codLote = 'L' . substr($anoAtual, 2) . str_pad(rand(101, 999), 3, '0', STR_PAD_LEFT);
+                        $dataVenc = $dataEntrada->copy()->addMonths(rand(14, 34))->toDateString();
+                        $dataFabr = $dataEntrada->copy()->subMonths(rand(1, 3))->toDateString();
+
+                        ItensEntrada::create([
+                            'entrada_id'      => $entrada->id,
+                            'produto_id'      => $prod->id,
+                            'quantidade'      => $quantidadeNF,
+                            'valor_unitario'  => $valorUnitario,
+                            'lote'            => $codLote,
+                            'data_fabricacao' => $dataFabr,
+                            'data_vencimento' => $dataVenc,
+                            'created_at'      => $dataEntrada,
+                            'updated_at'      => $dataEntrada,
+                        ]);
+                    }
                 }
             }
 
@@ -426,12 +446,36 @@ class DadosFakeRelatoriosSeeder extends Seeder
                 ],
             ];
 
+            // 9. Consumo Interno / Baixa Técnica ('C'): exclusivo para setores que controlam estoque
+            if ($isDistribuidor) {
+                $cenarios[] = [
+                    'status'        => 'A',
+                    'tipo'          => 'C',
+                    'is_consumo'    => true,
+                    'diasAtras'     => 4,
+                    'obs'           => 'Baixa Interna/Consumo: Fracionamento e dispensação direta aos leitos de isolamento.',
+                    'aprovador'     => $userAlmoxarife->id,
+                    'liberacao'     => 'total',
+                ];
+            }
+
             foreach ($cenarios as $c) {
                 $dataMov = $now->copy()->subDays($c['diasAtras'])->setTime(rand(8, 18), rand(5, 55));
                 $isDevolucao = !empty($c['is_devolucao']);
+                $isConsumo   = !empty($c['is_consumo']);
 
-                $origemId = $isDevolucao ? $setor->id : $distribuidor->id;
-                $destinoId = $isDevolucao ? $distribuidor->id : $setor->id;
+                if ($isConsumo) {
+                    $origemId  = $setor->id;
+                    $destinoId = $setor->id;
+                } else {
+                    $origemId  = $isDevolucao ? $setor->id : $distribuidor->id;
+                    $destinoId = $isDevolucao ? $distribuidor->id : $setor->id;
+                }
+
+                // Barreira: não permitir auto-solicitação (S/T/D) onde origem e destino são o mesmo setor
+                if (!$isConsumo && $origemId === $destinoId) {
+                    continue;
+                }
 
                 $mov = Movimentacao::create([
                     'usuario_id'           => $userSolicitante->id,
@@ -529,6 +573,28 @@ class DadosFakeRelatoriosSeeder extends Seeder
                     ]);
                 }
 
+                // Se foi um pedido regular aprovado integralmente, registrar uma devolução parcial na tabela `devolucoes`
+                // para alimentar a flag `tem_devolucao` e exibir o registro de auditoria de devoluções no histórico
+                if ($c['status'] === 'A' && $c['liberacao'] === 'total' && !$isDevolucao && !$isConsumo) {
+                    $primeiroItem = $mov->itens()->first();
+                    if ($primeiroItem && $primeiroItem->quantidade_liberada > 3) {
+                        $lotes = json_decode($primeiroItem->lote, true);
+                        if (!empty($lotes) && isset($lotes[0]['lote'])) {
+                            $qtdDev = min(2, (int) round($primeiroItem->quantidade_liberada * 0.2) ?: 1);
+                            Devolucao::create([
+                                'movimentacao_id'      => $mov->id,
+                                'item_movimentacao_id' => $primeiroItem->id,
+                                'lote'                 => $lotes[0]['lote'],
+                                'quantidade'           => $qtdDev,
+                                'motivo'               => 'Sobra pós-alta devolvida à farmácia para reincorporação de estoque.',
+                                'usuario_id'           => $userSolicitante->id,
+                                'created_at'           => $dataMov->copy()->addDays(1),
+                                'updated_at'           => $dataMov->copy()->addDays(1),
+                            ]);
+                        }
+                    }
+                }
+
                 $movimentacoesCriadas++;
             }
         }
@@ -554,6 +620,9 @@ class DadosFakeRelatoriosSeeder extends Seeder
         })->take(4);
 
         foreach ($setoresCriticos as $setor) {
+            if ($distribuidor->id === $setor->id) {
+                continue;
+            }
             $dataMov = $now->copy()->subDays(rand(2, 18))->setTime(rand(9, 16), rand(0, 50));
 
             $mov = Movimentacao::create([
