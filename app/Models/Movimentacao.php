@@ -11,6 +11,18 @@ class Movimentacao extends Model
 
     protected $table = 'movimentacao';
     protected $fillable = ['usuario_id', 'setor_origem_id', 'setor_destino_id', 'tipo', 'data_hora', 'observacao', 'status_solicitacao', 'aprovador_usuario_id'];
+    protected $appends = ['data_formatada', 'data'];
+
+    public function getDataFormatadaAttribute()
+    {
+        $dt = $this->data_hora ?? $this->created_at;
+        return $dt ? \Carbon\Carbon::parse($dt)->format('d/m/Y') : null;
+    }
+
+    public function getDataAttribute()
+    {
+        return $this->getDataFormatadaAttribute();
+    }
 
     public function usuario()
     {

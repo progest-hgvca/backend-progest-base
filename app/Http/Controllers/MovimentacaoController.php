@@ -131,6 +131,7 @@ class MovimentacaoController extends Controller
                             'produto_id' => $it['produto_id'],
                             'quantidade_solicitada' => $it['quantidade_solicitada'] ?? 0,
                             'quantidade_liberada' => $it['quantidade_liberada'] ?? 0,
+                            'quantidade_devolvendo' => $it['quantidade_devolvendo'] ?? (($data['tipo'] === 'D') ? ($it['quantidade_solicitada'] ?? 0) : 0),
                             'lote' => $it['lote'] ?? null
                         ]);
                     }
@@ -334,9 +335,14 @@ class MovimentacaoController extends Controller
                 // Validar estoque da origem antes de aprovar
                 $errosEstoque = [];
                 foreach ($mov->itens as $item) {
-                    $qtdLiberar = $quantidadesLiberadas[$item->id] ?? $item->quantidade_solicitada;
+                    $qtdPedida = $isDevolucao
+                        ? (((float) ($item->quantidade_devolvendo ?? 0) > 0) ? (float) $item->quantidade_devolvendo : (float) $item->quantidade_solicitada)
+                        : (float) $item->quantidade_solicitada;
+                    $qtdLiberar = $quantidadesLiberadas[$item->id] ?? $qtdPedida;
 
                     if ($qtdLiberar <= 0) {
+                        if ($isDevolucao) continue; // Itens não devolvidos são ignorados
+                        
                         DB::rollBack();
                         return response()->json([
                             'status' => false,
@@ -396,9 +402,16 @@ class MovimentacaoController extends Controller
 
                 // Atualizar quantidades liberadas e transferir estoque
                 foreach ($mov->itens as $item) {
-                    $qtdLiberar = $quantidadesLiberadas[$item->id] ?? $item->quantidade_solicitada;
-                    // Atualizar quantidade_liberada no item
-                    $item->quantidade_liberada = $qtdLiberar;
+                    $qtdPedida = $isDevolucao
+                        ? (((float) ($item->quantidade_devolvendo ?? 0) > 0) ? (float) $item->quantidade_devolvendo : (float) $item->quantidade_solicitada)
+                        : (float) $item->quantidade_solicitada;
+                    $qtdLiberar = $quantidadesLiberadas[$item->id] ?? $qtdPedida;
+                    
+                    if ($isDevolucao) {
+                        $item->quantidade_devolvendo = $qtdLiberar;
+                    } else {
+                        $item->quantidade_liberada = $qtdLiberar;
+                    }
                     $item->save();
 
                     if ($qtdLiberar <= 0) continue;
@@ -1022,11 +1035,141 @@ class MovimentacaoController extends Controller
     }
     public function devolver(Request $request, $id)
     {
+        // 1. Fluxo de devolução direta por lote individual
+        if (!$request->has('itens')) {
+            $validated = Validator::make($request->all(), [
+                'item_movimentacao_id' => 'required|integer',
+                'quantidade' => 'required|numeric|gt:0',
+                'lote' => 'required|string',
+                'motivo' => 'nullable|string|max:255'
+            ]);
+
+            if ($validated->fails()) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Erros de validação',
+                    'erros' => $validated->errors(),
+                    'errors' => $validated->errors()
+                ], 422);
+            }
+
+            $movimentacao = Movimentacao::with('itens')->find($id);
+            if (!$movimentacao) {
+                return response()->json(['status' => false, 'message' => 'Movimentação não encontrada.'], 404);
+            }
+
+            $itemMov = $movimentacao->itens->where('id', $request->input('item_movimentacao_id'))->first();
+            if (!$itemMov) {
+                return response()->json(['status' => false, 'message' => 'Item não pertence a esta movimentação.'], 422);
+            }
+
+            $quantidadeADevolver = (float) $request->input('quantidade');
+            $loteNome = $request->input('lote');
+            $userId = auth()->id();
+            $motivo = $request->input('motivo');
+
+            $lotesOriginal = json_decode($itemMov->lote, true);
+            if (!is_array($lotesOriginal)) {
+                 return response()->json(['status' => false, 'message' => 'Lote original inválido no item.'], 422);
+            }
+
+            $qtdOriginalNoLote = 0;
+            foreach ($lotesOriginal as $lot) {
+                if (($lot['lote'] ?? null) === $loteNome) {
+                    $qtdOriginalNoLote = (float) ($lot['quantidade'] ?? $lot['qtd'] ?? 0);
+                    break;
+                }
+            }
+
+            if ($qtdOriginalNoLote <= 0) {
+                return response()->json(['status' => false, 'message' => 'Este lote não foi utilizado no atendimento deste item.'], 422);
+            }
+
+            try {
+                DB::beginTransaction();
+
+                $jaDevolvida = \App\Models\Devolucao::where('item_movimentacao_id', $itemMov->id)
+                    ->where('lote', $loteNome)
+                    ->sum('quantidade');
+
+                if ($quantidadeADevolver + $jaDevolvida > $qtdOriginalNoLote) {
+                    DB::rollBack();
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'Quantidade a devolver excede a quantidade atendida no pedido para este lote.',
+                        'erros' => [
+                            'quantidade' => ['Quantidade máxima permitida: ' . ($qtdOriginalNoLote - $jaDevolvida)]
+                        ]
+                    ], 422);
+                }
+
+                // O estoque/lote pertence ao setor_origem_id da movimentacao (o distribuidor)
+                $estoqueLote = \App\Models\EstoqueLote::firstOrCreate(
+                    [
+                        'setor_id' => $movimentacao->setor_origem_id,
+                        'produto_id' => $itemMov->produto_id,
+                        'lote' => $loteNome,
+                    ],
+                    [
+                        'quantidade_disponivel' => 0
+                    ]
+                );
+
+                $estoqueLote = \App\Models\EstoqueLote::where('id', $estoqueLote->id)->lockForUpdate()->first();
+                $estoqueLote->quantidade_disponivel += $quantidadeADevolver;
+                $estoqueLote->save();
+
+                $estoque = \App\Models\Estoque::where('produto_id', $itemMov->produto_id)
+                    ->where('setor_id', $movimentacao->setor_origem_id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($estoque) {
+                    $estoque->quantidade_atual += $quantidadeADevolver;
+                    $estoque->status_disponibilidade = $estoque->quantidade_atual > 0 ? 'D' : 'I';
+                    $estoque->save();
+                } else {
+                    \App\Models\Estoque::create([
+                        'produto_id' => $itemMov->produto_id,
+                        'setor_id' => $movimentacao->setor_origem_id,
+                        'quantidade_atual' => $quantidadeADevolver,
+                        'quantidade_minima' => 0,
+                        'status_disponibilidade' => 'D'
+                    ]);
+                }
+
+                \App\Models\Devolucao::create([
+                    'movimentacao_id' => $movimentacao->id,
+                    'item_movimentacao_id' => $itemMov->id,
+                    'lote' => $loteNome,
+                    'quantidade' => $quantidadeADevolver,
+                    'motivo' => $motivo,
+                    'usuario_id' => $userId
+                ]);
+
+                DB::commit();
+
+                return response()->json([
+                    'status' => true,
+                    'message' => 'Devolução registrada com sucesso!'
+                ]);
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                Log::error('Erro em devolver: ' . $e->getMessage());
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Erro ao processar devolução.'
+                ], 500);
+            }
+        }
+
+        // 2. Fluxo de devolução múltipla (em lote de itens do pedido)
         $validated = Validator::make($request->all(), [
-            'item_movimentacao_id' => 'required|integer',
-            'quantidade' => 'required|numeric|gt:0',
-            'lote' => 'required|string',
-            'motivo' => 'nullable|string|max:255'
+            'motivo' => 'nullable|string|max:255',
+            'itens' => 'required|array|min:1',
+            'itens.*.item_movimentacao_id' => 'required|integer',
+            'itens.*.quantidade_devolvendo' => 'required|numeric|min:0',
         ]);
 
         if ($validated->fails()) {
@@ -1038,107 +1181,58 @@ class MovimentacaoController extends Controller
             ], 422);
         }
 
-        $movimentacao = Movimentacao::with('itens')->find($id);
-        if (!$movimentacao) {
-            return response()->json(['status' => false, 'message' => 'Movimentação não encontrada.'], 404);
-        }
-
-        $itemMov = $movimentacao->itens->where('id', $request->input('item_movimentacao_id'))->first();
-        if (!$itemMov) {
-            return response()->json(['status' => false, 'message' => 'Item não pertence a esta movimentação.'], 422);
-        }
-
-        $quantidadeADevolver = (float) $request->input('quantidade');
-        $loteNome = $request->input('lote');
-        $userId = auth()->id();
-        $motivo = $request->input('motivo');
-
-        $lotesOriginal = json_decode($itemMov->lote, true);
-        if (!is_array($lotesOriginal)) {
-             return response()->json(['status' => false, 'message' => 'Lote original inválido no item.'], 422);
-        }
-
-        $qtdOriginalNoLote = 0;
-        foreach ($lotesOriginal as $lot) {
-            if (($lot['lote'] ?? null) === $loteNome) {
-                $qtdOriginalNoLote = (float) ($lot['quantidade'] ?? $lot['qtd'] ?? 0);
-                break;
-            }
-        }
-
-        if ($qtdOriginalNoLote <= 0) {
-            return response()->json(['status' => false, 'message' => 'Este lote não foi utilizado no atendimento deste item.'], 422);
+        $movimentacaoOriginal = Movimentacao::with('itens')->find($id);
+        if (!$movimentacaoOriginal) {
+            return response()->json(['status' => false, 'message' => 'Movimentação original não encontrada.'], 404);
         }
 
         try {
             DB::beginTransaction();
 
-            $jaDevolvida = \App\Models\Devolucao::where('item_movimentacao_id', $itemMov->id)
-                ->where('lote', $loteNome)
-                ->sum('quantidade');
+            $userId = auth()->id();
 
-            if ($quantidadeADevolver + $jaDevolvida > $qtdOriginalNoLote) {
-                DB::rollBack();
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Quantidade a devolver excede a quantidade atendida no pedido para este lote.',
-                    'erros' => [
-                        'quantidade' => ['Quantidade máxima permitida: ' . ($qtdOriginalNoLote - $jaDevolvida)]
-                    ]
-                ], 422);
-            }
+            // A devolução inverte a origem e destino
+            $mov = Movimentacao::create([
+                'usuario_id' => $userId,
+                'setor_origem_id' => $movimentacaoOriginal->setor_destino_id,
+                'setor_destino_id' => $movimentacaoOriginal->setor_origem_id,
+                'tipo' => 'D',
+                'data_hora' => now(),
+                'observacao' => $request->input('motivo') ?? 'Devolução originada do pedido #' . $movimentacaoOriginal->id,
+                'status_solicitacao' => 'P',
+                'aprovador_usuario_id' => null,
+            ]);
 
-            // O estoque/lote pertence ao setor_origem_id da movimentacao (o distribuidor)
-            $estoqueLote = \App\Models\EstoqueLote::firstOrCreate(
-                [
-                    'setor_id' => $movimentacao->setor_origem_id,
-                    'produto_id' => $itemMov->produto_id,
-                    'lote' => $loteNome,
-                ],
-                [
-                    'quantidade_disponivel' => 0
-                ]
-            );
+            foreach ($request->input('itens') as $reqItem) {
+                $itemOriginal = $movimentacaoOriginal->itens->where('id', $reqItem['item_movimentacao_id'])->first();
+                if (!$itemOriginal) continue;
 
-            // Bloqueia e incrementa
-            $estoqueLote = \App\Models\EstoqueLote::where('id', $estoqueLote->id)->lockForUpdate()->first();
-            $estoqueLote->quantidade_disponivel += $quantidadeADevolver;
-            $estoqueLote->save();
+                $qtdDevolvendo = (float) $reqItem['quantidade_devolvendo'];
 
-            // Bloqueia e incrementa estoque geral
-            $estoque = \App\Models\Estoque::where('produto_id', $itemMov->produto_id)
-                ->where('setor_id', $movimentacao->setor_origem_id)
-                ->lockForUpdate()
-                ->first();
+                // Valida se a quantidade a devolver não é maior do que a liberada na original
+                if ($qtdDevolvendo > $itemOriginal->quantidade_liberada) {
+                    DB::rollBack();
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'A quantidade devolvida excede a quantidade liberada original para um dos itens.'
+                    ], 422);
+                }
 
-            if ($estoque) {
-                $estoque->quantidade_atual += $quantidadeADevolver;
-                $estoque->status_disponibilidade = $estoque->quantidade_atual > 0 ? 'D' : 'I';
-                $estoque->save();
-            } else {
-                \App\Models\Estoque::create([
-                    'produto_id' => $itemMov->produto_id,
-                    'setor_id' => $movimentacao->setor_origem_id,
-                    'quantidade_atual' => $quantidadeADevolver,
-                    'quantidade_minima' => 0,
-                    'status_disponibilidade' => 'D'
+                \App\Models\ItemMovimentacao::create([
+                    'movimentacao_id' => $mov->id,
+                    'produto_id' => $itemOriginal->produto_id,
+                    'quantidade_solicitada' => $itemOriginal->quantidade_solicitada,
+                    'quantidade_liberada' => $itemOriginal->quantidade_liberada,
+                    'quantidade_devolvendo' => $qtdDevolvendo,
+                    'lote' => $itemOriginal->lote,
                 ]);
             }
-
-            \App\Models\Devolucao::create([
-                'movimentacao_id' => $movimentacao->id,
-                'item_movimentacao_id' => $itemMov->id,
-                'lote' => $loteNome,
-                'quantidade' => $quantidadeADevolver,
-                'motivo' => $motivo,
-                'usuario_id' => $userId
-            ]);
 
             DB::commit();
 
             return response()->json([
                 'status' => true,
-                'message' => 'Devolução registrada com sucesso!'
+                'message' => 'Solicitação de devolução criada com sucesso e aguarda aprovação!'
             ]);
 
         } catch (\Exception $e) {
@@ -1146,7 +1240,7 @@ class MovimentacaoController extends Controller
             Log::error('Erro em devolver: ' . $e->getMessage());
             return response()->json([
                 'status' => false,
-                'message' => 'Erro ao processar devolução.'
+                'message' => 'Erro ao processar criação da devolução.'
             ], 500);
         }
     }
