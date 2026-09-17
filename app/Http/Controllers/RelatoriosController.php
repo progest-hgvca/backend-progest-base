@@ -1661,6 +1661,7 @@ class RelatoriosController extends Controller
                     'setor_destino.nome as setor_destino',
                     'produtos.nome as produto',
                     'produtos.codigo_simpas',
+                    'produtos.codigo_simpas as codigo_simpass',
                     'item_movimentacao.lote',
                     'item_movimentacao.quantidade_liberada as quantidade',
                     DB::raw('MAX(itens_entrada.valor_unitario) as valor_unitario'),
@@ -1690,9 +1691,15 @@ class RelatoriosController extends Controller
 
             $query->orderBy('movimentacao.created_at', 'desc');
 
+            $totalGeral = (clone $query)->get()->sum('valor_total');
             $result = $query->paginate(30);
 
-            return response()->json(['status' => true, 'data' => $result]);
+            return response()->json([
+                'status' => true,
+                'data' => $result,
+                'total_valor' => (float)$totalGeral,
+                'valor_total_geral' => (float)$totalGeral
+            ]);
 
         } catch (\Exception $e) {
             return response()->json(['status' => false, 'message' => 'Erro ao listar relat�rio financeiro de sa�das: ' . $e->getMessage()], 500);

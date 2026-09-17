@@ -585,6 +585,8 @@ class DadosFakeRelatoriosSeeder extends Seeder
                                 'movimentacao_id'      => $mov->id,
                                 'item_movimentacao_id' => $primeiroItem->id,
                                 'lote'                 => $lotes[0]['lote'],
+                                'quantidade_solicitada'=> $qtdDev,
+                                'quantidade_aprovada'  => $qtdDev,
                                 'quantidade'           => $qtdDev,
                                 'motivo'               => 'Sobra pós-alta devolvida à farmácia para reincorporação de estoque.',
                                 'usuario_id'           => $userSolicitante->id,
