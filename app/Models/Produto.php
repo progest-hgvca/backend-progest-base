@@ -27,6 +27,13 @@ class Produto extends Model
         'updated_at' => 'datetime',
     ];
 
+    protected $appends = ['codigo_simpass'];
+
+    public function getCodigoSimpassAttribute()
+    {
+        return $this->attributes['codigo_simpas'] ?? null;
+    }
+
     // Relacionamentos
     public function grupoProduto()
     {

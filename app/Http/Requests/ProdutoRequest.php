@@ -14,6 +14,13 @@ class ProdutoRequest extends BaseFormRequest
         'D1', 'D2', 'E', 'F',
     ];
 
+    protected function prepareForValidation()
+    {
+        if (!$this->has('produto') && $this->has('nome')) {
+            $this->merge(['produto' => $this->all()]);
+        }
+    }
+
     public function rules()
     {
         $produto = $this->input('produto', []);

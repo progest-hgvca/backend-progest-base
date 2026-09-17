@@ -119,6 +119,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // --------------------------------------------------------
     // Produtos — escrita protegida; leitura pública abaixo
     // --------------------------------------------------------
+    Route::post('/produtos',                [ProdutoController::class, 'add']);
     Route::post('/produtos/add',            [ProdutoController::class, 'add']);
     Route::post('/produtos/update',         [ProdutoController::class, 'update']);
     Route::match(['post', 'delete'], '/produtos/delete/{id}', [ProdutoController::class, 'delete']);
