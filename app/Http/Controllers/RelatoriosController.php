@@ -1590,7 +1590,7 @@ class RelatoriosController extends Controller
     }
 
     /**
-     * Relatório Financeiro de Entradas
+     * Relatï¿½rio Financeiro de Entradas
      */
     public function listEntradasFinanceiras(Request $request)
     {
@@ -1605,7 +1605,7 @@ class RelatoriosController extends Controller
                 ->join('polos', 'setores.polo_id', '=', 'polos.id')
                 ->join('fornecedores', 'entrada.fornecedor_id', '=', 'fornecedores.id')
                 ->select(
-                    'entrada.data_entrada',
+                    'entrada.created_at as data_entrada',
                     'polos.nome as polo',
                     'setores.nome as setor',
                     'fornecedores.razao_social_nome as fornecedor',
@@ -1617,28 +1617,28 @@ class RelatoriosController extends Controller
                 );
 
             if (!empty($filters['date_from'])) {
-                $query->whereDate('entrada.data_entrada', '>=', $filters['date_from']);
+                $query->whereDate('entrada.created_at as data_entrada', '>=', $filters['date_from']);
             }
             if (!empty($filters['date_to'])) {
-                $query->whereDate('entrada.data_entrada', '<=', $filters['date_to']);
+                $query->whereDate('entrada.created_at as data_entrada', '<=', $filters['date_to']);
             }
             if (!empty($filters['setor_id'])) {
                 $query->where('entrada.setor_id', $filters['setor_id']);
             }
 
-            $query->orderBy('entrada.data_entrada', 'desc');
+            $query->orderBy('entrada.created_at', 'desc');
 
             $result = $query->paginate(30);
 
             return response()->json(['status' => true, 'data' => $result]);
 
         } catch (\Exception $e) {
-            return response()->json(['status' => false, 'message' => 'Erro ao listar relatório financeiro de entradas: ' . $e->getMessage()], 500);
+            return response()->json(['status' => false, 'message' => 'Erro ao listar relatï¿½rio financeiro de entradas: ' . $e->getMessage()], 500);
         }
     }
 
     /**
-     * Relatório Financeiro de Saídas (Movimentações)
+     * Relatï¿½rio Financeiro de Saï¿½das (Movimentaï¿½ï¿½es)
      */
     public function listSaidasFinanceiras(Request $request)
     {
@@ -1646,7 +1646,7 @@ class RelatoriosController extends Controller
             $data = $request->all();
             $filters = $data['filters'] ?? [];
 
-            // Obtém o custo pegando a entrada mais recente daquele lote e produto
+            // Obtï¿½m o custo pegando a entrada mais recente daquele lote e produto
             $query = DB::table('movimentacao')
                 ->join('item_movimentacao', 'movimentacao.id', '=', 'item_movimentacao.movimentacao_id')
                 ->join('produtos', 'item_movimentacao.produto_id', '=', 'produtos.id')
@@ -1695,7 +1695,7 @@ class RelatoriosController extends Controller
             return response()->json(['status' => true, 'data' => $result]);
 
         } catch (\Exception $e) {
-            return response()->json(['status' => false, 'message' => 'Erro ao listar relatório financeiro de saídas: ' . $e->getMessage()], 500);
+            return response()->json(['status' => false, 'message' => 'Erro ao listar relatï¿½rio financeiro de saï¿½das: ' . $e->getMessage()], 500);
         }
     }
 }
