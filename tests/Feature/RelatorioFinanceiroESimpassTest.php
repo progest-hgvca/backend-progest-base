@@ -81,6 +81,7 @@ class RelatorioFinanceiroESimpassTest extends TestCase
             'setor_origem_id' => $this->setorFornecedor->id,
             'setor_destino_id' => $this->setorDestino->id,
             'usuario_id' => $this->superAdmin->id,
+            'aprovador_usuario_id' => $this->superAdmin->id,
             'tipo' => 'S',
             'status_solicitacao' => 'A', // Aprovado
             'data_hora' => now()

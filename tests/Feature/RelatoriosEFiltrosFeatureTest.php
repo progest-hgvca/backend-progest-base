@@ -92,6 +92,7 @@ class RelatoriosEFiltrosFeatureTest extends TestCase
         // 2. Movimentação Tipo Saída/Solicitação ('S')
         $movSaida = Movimentacao::create([
             'usuario_id' => $this->solicitanteClinica->id,
+            'aprovador_usuario_id' => $this->superAdmin->id,
             'setor_origem_id' => $this->farmaciaDispensacao->id,
             'setor_destino_id' => $this->clinicaMedica->id,
             'tipo' => 'S',
@@ -114,6 +115,7 @@ class RelatoriosEFiltrosFeatureTest extends TestCase
         // 3. Movimentação Tipo Devolução ('D')
         $movDevolucao = Movimentacao::create([
             'usuario_id' => $this->solicitanteClinica->id,
+            'aprovador_usuario_id' => $this->superAdmin->id,
             'setor_origem_id' => $this->clinicaMedica->id,
             'setor_destino_id' => $this->farmaciaDispensacao->id,
             'tipo' => 'D',
@@ -136,6 +138,7 @@ class RelatoriosEFiltrosFeatureTest extends TestCase
         // 4. Movimentação antiga (fora de range para testar datas)
         $movAntiga = Movimentacao::create([
             'usuario_id' => $this->superAdmin->id,
+            'aprovador_usuario_id' => $this->superAdmin->id,
             'setor_origem_id' => $this->caf->id,
             'setor_destino_id' => $this->farmaciaDispensacao->id,
             'tipo' => 'T',

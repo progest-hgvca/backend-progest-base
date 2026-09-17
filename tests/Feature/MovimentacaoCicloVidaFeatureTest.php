@@ -183,6 +183,7 @@ class MovimentacaoCicloVidaFeatureTest extends TestCase
         // Cria uma movimentação já aprovada ('A')
         $mov = Movimentacao::create([
             'usuario_id'         => $this->solicitante->id,
+            'aprovador_usuario_id' => $this->almoxarife->id,
             'setor_origem_id'    => $this->setorDistribuidor->id,
             'setor_destino_id'   => $this->setorConsumidor->id,
             'tipo'               => 'S',

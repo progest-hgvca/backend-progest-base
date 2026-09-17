@@ -35,6 +35,7 @@ class DevolucaoPedidoTest extends TestCase
         
         $this->movimentacao = Movimentacao::create([
             'usuario_id' => $this->user->id,
+            'aprovador_usuario_id' => $this->user->id,
             'setor_origem_id' => $this->setorDistribuidor->id,
             'setor_destino_id' => $this->setorConsumidor->id,
             'tipo' => 'S', // Saída/Pedido
