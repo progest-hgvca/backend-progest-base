@@ -163,7 +163,7 @@ class MovimentacaoController extends Controller
             return response()->json(['status' => false, 'message' => 'setor_id (ou unidade_id) é obrigatório'], 422);
         }
 
-        $query = Movimentacao::with(['usuario', 'aprovador', 'setorOrigem', 'setorDestino', 'itens.produto', 'devolucoes.usuario'])
+        $query = Movimentacao::with(['usuario', 'aprovador', 'setorOrigem', 'setorDestino', 'itens.produto', 'devolucoes.usuario', 'devolucoes.pedido.setorDestino'])
             ->where(function ($q) use ($setorId) {
                 $q->where('setor_origem_id', $setorId)
                   ->orWhere('setor_destino_id', $setorId);
@@ -215,7 +215,7 @@ class MovimentacaoController extends Controller
     // Detalhes / itens da movimentação
     public function show($id)
     {
-        $mov = Movimentacao::with(['itens.produto.unidadeMedida', 'usuario', 'aprovador', 'setorOrigem', 'setorDestino', 'devolucoes.usuario'])->find($id);
+        $mov = Movimentacao::with(['itens.produto.unidadeMedida', 'usuario', 'aprovador', 'setorOrigem', 'setorDestino', 'devolucoes.usuario', 'devolucoes.pedido.setorDestino'])->find($id);
         if (!$mov) {
             return response()->json(['status' => false, 'message' => 'Movimentação não encontrada'], 404);
         }
@@ -758,31 +758,38 @@ class MovimentacaoController extends Controller
         $preview = [];
 
         foreach ($mov->itens as $item) {
-            $qtdNecessaria = (float) $item->quantidade_solicitada;
+            $qtdNecessaria = intval($item->quantidade_solicitada);
             $lotesUsados   = [];
             $restante      = $qtdNecessaria;
 
-            // Mesma regra da aprovação: só lotes na validade entram no FIFO
+            $colunaValidade = \Illuminate\Support\Facades\Schema::hasColumn('estoque_lote', 'data_validade') ? 'data_validade' : 'data_vencimento';
+
+            // Mesma regra da aprovação: só lotes na validade entram no FIFO (validade mais próxima e menor id)
             $lotes = $this->lotesDisponiveisQuery($item->produto_id, $mov->setor_origem_id)
-                ->orderBy('data_vencimento', 'asc') // FIFO: mais antigo primeiro
+                ->orderBy($colunaValidade, 'asc')
+                ->orderBy('id', 'asc')
                 ->get();
 
-            $vencidoIgnorado = (float) EstoqueLote::where('produto_id', $item->produto_id)
+            $vencidoIgnorado = intval(EstoqueLote::where('produto_id', $item->produto_id)
                 ->where('setor_id', $mov->setor_origem_id)
                 ->where('quantidade_disponivel', '>', 0)
                 ->whereDate('data_vencimento', '<', now()->toDateString())
-                ->sum('quantidade_disponivel');
+                ->sum('quantidade_disponivel'));
 
             foreach ($lotes as $lote) {
                 if ($restante <= 0) break;
 
-                $qtdUsada = min((float) $lote->quantidade_disponivel, $restante);
+                $saldoLote = intval($lote->quantidade_disponivel ?? $lote->quantidade ?? 0);
+                if ($saldoLote <= 0) continue;
+
+                $qtdUsada = min($saldoLote, $restante);
                 $lotesUsados[] = [
                     'lote'                  => $lote->lote,
                     'data_vencimento'       => $lote->data_vencimento,
+                    'data_validade'         => $lote->data_vencimento,
                     'data_fabricacao'       => $lote->data_fabricacao,
-                    'quantidade_disponivel' => (float) $lote->quantidade_disponivel,
-                    'quantidade_a_usar'     => $qtdUsada,
+                    'quantidade_disponivel' => $saldoLote,
+                    'quantidade_a_usar'     => intval($qtdUsada),
                 ];
                 $restante -= $qtdUsada;
             }
@@ -790,8 +797,8 @@ class MovimentacaoController extends Controller
             $preview[] = [
                 'produto_id'               => $item->produto_id,
                 'produto_nome'             => $item->produto?->nome ?? "ID {$item->produto_id}",
-                'quantidade_solicitada'    => $qtdNecessaria,
-                'quantidade_sem_cobertura' => max(0, $restante),
+                'quantidade_solicitada'    => intval($qtdNecessaria),
+                'quantidade_sem_cobertura' => max(0, intval($restante)),
                 'quantidade_vencida_ignorada' => $vencidoIgnorado,
                 'lotes_a_consumir'         => $lotesUsados,
             ];
@@ -852,11 +859,14 @@ class MovimentacaoController extends Controller
      */
     private function transferirLotesFifo(int $produtoId, int $setorOrigemId, ?int $setorDestinoId, float $qtdLiberar): array
     {
-        $restante = $qtdLiberar;
+        $restante = intval($qtdLiberar);
         $lotesConsumidos = [];
 
+        $colunaValidade = \Illuminate\Support\Facades\Schema::hasColumn('estoque_lote', 'data_validade') ? 'data_validade' : 'data_vencimento';
+
         $lotes = $this->lotesDisponiveisQuery($produtoId, $setorOrigemId)
-            ->orderBy('data_vencimento', 'asc') // FIFO
+            ->orderBy($colunaValidade, 'asc')
+            ->orderBy('id', 'asc') // FIFO estrito
             ->lockForUpdate()
             ->get();
 
@@ -866,17 +876,27 @@ class MovimentacaoController extends Controller
         foreach ($lotes as $lote) {
             if ($restante <= 0) break;
 
-            $qtdDeducao = min((float) $lote->quantidade_disponivel, $restante);
+            $saldoLote = intval($lote->quantidade_disponivel ?? $lote->quantidade ?? 0);
+            if ($saldoLote <= 0) continue;
 
-            // Deduzir da origem
-            $lote->quantidade_disponivel -= $qtdDeducao;
+            $qtdDeducao = min($restante, $saldoLote);
+
+            // Deduzir da origem garantindo que nunca negative nem consuma além da conta
+            $lote->quantidade_disponivel = max(0, $saldoLote - $qtdDeducao);
             $lote->save();
             $restante -= $qtdDeducao;
             
+            $dataVenc = $lote->data_vencimento;
+            if ($dataVenc instanceof \DateTimeInterface) {
+                $dataVenc = $dataVenc->format('Y-m-d');
+            } elseif (is_string($dataVenc) && strlen($dataVenc) > 10) {
+                $dataVenc = substr($dataVenc, 0, 10);
+            }
+
             $lotesConsumidos[] = [
                 'lote' => $lote->lote,
-                'data_vencimento' => $lote->data_vencimento,
-                'qtd' => $qtdDeducao
+                'data_vencimento' => $dataVenc,
+                'qtd' => intval($qtdDeducao)
             ];
 
             Log::info('EstoqueLote origem descontado', [
@@ -900,7 +920,7 @@ class MovimentacaoController extends Controller
                         'quantidade_disponivel' => 0,
                     ]
                 );
-                $loteDestino->quantidade_disponivel += $qtdDeducao;
+                $loteDestino->quantidade_disponivel = intval($loteDestino->quantidade_disponivel) + intval($qtdDeducao);
                 $loteDestino->save();
 
                 Log::info('EstoqueLote destino incrementado', [
@@ -958,7 +978,7 @@ class MovimentacaoController extends Controller
 
         $produtoId = $request->input('produto_id');
         $lote = $request->input('lote');
-        $qtdConsumir = (float) $request->input('quantidade');
+        $qtdConsumir = intval($request->input('quantidade'));
         $observacao = $request->input('observacao');
 
         try {

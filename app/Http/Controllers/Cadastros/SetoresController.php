@@ -672,6 +672,12 @@ class SetoresController
                     'descricao'     => $rel->distribuidor->descricao ?? null,
                     'tipo'          => $rel->distribuidor->tipo ?? null,
                     'estoque'       => isset($rel->distribuidor->estoque) ? (bool) $rel->distribuidor->estoque : null,
+                    'polo'          => $rel->distribuidor->polo ? [
+                        'id'    => $rel->distribuidor->polo->id,
+                        'nome'  => $rel->distribuidor->polo->nome,
+                        'sigla' => $rel->distribuidor->polo->sigla,
+                    ] : null,
+                    'sigla_polo'    => $rel->distribuidor->polo?->sigla,
                 ];
             }
             $distribuidores[] = [
@@ -863,9 +869,10 @@ class SetoresController
                 ], 404);
             }
 
-            // Buscar distribuidores relacionados a este setor (como solicitante)
+            // Buscar distribuidores estritamente relacionados a este setor (como solicitante)
             $distribuidores = DB::table('setor_distribuidor')
                 ->join('setores', 'setores.id', '=', 'setor_distribuidor.setor_distribuidor_id')
+                ->leftJoin('polos', 'polos.id', '=', 'setores.polo_id')
                 ->where('setor_distribuidor.setor_solicitante_id', $setorId)
                 ->where('setores.status', 'A')
                 ->select(
@@ -873,6 +880,8 @@ class SetoresController
                     'setores.nome',
                     'setores.tipo',
                     'setores.estoque',
+                    'polos.sigla as sigla_polo',
+                    'polos.nome as nome_polo',
                     'setor_distribuidor.id as relacao_id'
                 )
                 ->orderBy('setores.nome')

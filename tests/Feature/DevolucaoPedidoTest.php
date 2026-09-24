@@ -238,7 +238,108 @@ class DevolucaoPedidoTest extends TestCase
         $this->assertNotNull($showData['aprovador']);
         $this->assertNotEmpty($showData['devolucoes']);
         $this->assertEquals($this->movimentacao->id, $showData['devolucoes'][0]['numero_pedido']);
+        $this->assertEquals($this->movimentacao->id, $showData['devolucoes'][0]['pedido_origem_id']);
+        $this->assertNotNull($showData['devolucoes'][0]['pedido']);
+        $this->assertEquals($this->setorConsumidor->id, $showData['devolucoes'][0]['pedido']['setor_destino_id']);
         $this->assertIsInt($showData['devolucoes'][0]['quantidade']);
         $this->assertEquals(2, $showData['devolucoes'][0]['quantidade']);
+    }
+
+    public function test_filtro_rigido_distribuidores_para_setor()
+    {
+        $outroSetor = Setores::factory()->create(['estoque' => true]);
+
+        // Consulta sem distribuidores cadastrados deve vir vazia
+        $responseVazio = $this->actingAs($this->user)->postJson('/api/setores/listDistribuidoresParaSetor', [
+            'setor_id' => $outroSetor->id
+        ]);
+        $responseVazio->assertStatus(200);
+        $this->assertCount(0, $responseVazio->json('data'));
+
+        // Vincula distribuidor
+        DB::table('setor_distribuidor')->insert([
+            'setor_solicitante_id' => $this->setorConsumidor->id,
+            'setor_distribuidor_id' => $this->setorDistribuidor->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->actingAs($this->user)->postJson('/api/setores/listDistribuidoresParaSetor', [
+            'setor_id' => $this->setorConsumidor->id
+        ]);
+
+        $response->assertStatus(200);
+        $distribuidores = $response->json('data');
+        $this->assertGreaterThanOrEqual(1, count($distribuidores));
+        $this->assertEquals($this->setorDistribuidor->id, $distribuidores[0]['id']);
+    }
+
+    public function test_fifo_estrito_por_validade_e_id()
+    {
+        $produtoFifo = Produto::factory()->create();
+
+        // Lote 1: Vence em 10 meses
+        $lote1 = EstoqueLote::create([
+            'produto_id' => $produtoFifo->id,
+            'setor_id' => $this->setorDistribuidor->id,
+            'lote' => 'FIFO-1',
+            'quantidade_disponivel' => 5,
+            'data_vencimento' => now()->addMonths(10)->toDateString()
+        ]);
+
+        // Lote 2: Vence em 2 meses (deve sair primeiro!)
+        $lote2 = EstoqueLote::create([
+            'produto_id' => $produtoFifo->id,
+            'setor_id' => $this->setorDistribuidor->id,
+            'lote' => 'FIFO-2',
+            'quantidade_disponivel' => 4,
+            'data_vencimento' => now()->addMonths(2)->toDateString()
+        ]);
+
+        Estoque::create([
+            'produto_id' => $produtoFifo->id,
+            'setor_id' => $this->setorDistribuidor->id,
+            'quantidade_atual' => 9,
+            'quantidade_minima' => 0,
+            'status_disponibilidade' => 'D'
+        ]);
+
+        // Criar pedido pendente de 6 unidades
+        $mov = Movimentacao::create([
+            'usuario_id' => $this->user->id,
+            'setor_origem_id' => $this->setorDistribuidor->id,
+            'setor_destino_id' => $this->setorConsumidor->id,
+            'tipo' => 'T',
+            'data_hora' => now(),
+            'status_solicitacao' => 'P'
+        ]);
+
+        ItemMovimentacao::create([
+            'movimentacao_id' => $mov->id,
+            'produto_id' => $produtoFifo->id,
+            'quantidade_solicitada' => 6,
+            'quantidade_liberada' => 0
+        ]);
+
+        // Aprovar movimentação (deve consumir 4 de FIFO-2 e 2 de FIFO-1)
+        $resp = $this->actingAs($this->user)->postJson("/api/movimentacao/{$mov->id}/process", [
+            'action' => 'approve',
+            'itens' => [
+                [
+                    'id' => $mov->itens()->first()->id,
+                    'quantidade_liberada' => 6
+                ]
+            ]
+        ]);
+
+        $resp->assertStatus(200);
+
+        // FIFO-2 deve ter sido totalmente zerado (4 - 4 = 0) e nunca negativado
+        $lote2->refresh();
+        $this->assertEquals(0, intval($lote2->quantidade_disponivel));
+
+        // FIFO-1 deve ter 3 restantes (5 - 2 = 3)
+        $lote1->refresh();
+        $this->assertEquals(3, intval($lote1->quantidade_disponivel));
     }
 }

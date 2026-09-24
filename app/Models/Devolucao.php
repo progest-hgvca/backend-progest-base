@@ -22,7 +22,7 @@ class Devolucao extends Model
         'usuario_id'
     ];
 
-    protected $appends = ['numero_pedido'];
+    protected $appends = ['numero_pedido', 'pedido_origem_id'];
 
     protected $casts = [
         'quantidade' => 'integer',
@@ -35,9 +35,24 @@ class Devolucao extends Model
         return $this->movimentacao_id;
     }
 
+    public function getPedidoOrigemIdAttribute()
+    {
+        return $this->movimentacao_id;
+    }
+
     public function movimentacao()
     {
-        return $this->belongsTo(Movimentacao::class);
+        return $this->belongsTo(Movimentacao::class, 'movimentacao_id');
+    }
+
+    public function pedido()
+    {
+        return $this->belongsTo(Movimentacao::class, 'movimentacao_id');
+    }
+
+    public function movimentacaoOrigem()
+    {
+        return $this->belongsTo(Movimentacao::class, 'movimentacao_id');
     }
 
     public function itemMovimentacao()
