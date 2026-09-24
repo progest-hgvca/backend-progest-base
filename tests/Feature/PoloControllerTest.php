@@ -19,9 +19,11 @@ class PoloControllerTest extends TestCase
 
     public function test_create_polo_successfully()
     {
+        $uniqueName = 'Polo Teste ' . \Illuminate\Support\Str::random(5);
+        $uniqueSigla = strtoupper(\Illuminate\Support\Str::random(3));
         $payload = [
-            'nome' => 'Polo Teste',
-            'sigla' => 'TST',
+            'nome' => $uniqueName,
+            'sigla' => $uniqueSigla,
             'status' => 'A'
         ];
 
@@ -31,8 +33,8 @@ class PoloControllerTest extends TestCase
                  ->assertJson(['status' => true]);
 
         $this->assertDatabaseHas('polos', [
-            'nome' => 'POLO TESTE',
-            'sigla' => 'TST',
+            'nome' => strtoupper($uniqueName),
+            'sigla' => $uniqueSigla,
             'status' => 'A'
         ]);
     }

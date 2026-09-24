@@ -105,8 +105,21 @@ class RelatoriosController extends Controller
             $results = $query->get();
 
             $user = auth()->user();
-            $results = $results->map(function ($entrada) use ($user) {
-                $podeVer = $user && $entrada->setor && $user->podeVerValoresFinanceiros($entrada->setor);
+            $isSuperAdmin = $user ? $user->isSuperAdmin() : false;
+            
+            $setoresFinanceiro = collect();
+            if ($user && !$isSuperAdmin) {
+                $setoresFinanceiro = \Illuminate\Support\Facades\DB::table('usuario_setor')
+                    ->where('usuario_id', $user->id)
+                    ->whereIn('perfil', ['admin', 'almoxarife'])
+                    ->pluck('setor_id');
+            }
+
+            $results = $results->map(function ($entrada) use ($user, $isSuperAdmin, $setoresFinanceiro) {
+                $podeVer = false;
+                if ($user && $entrada->setor) {
+                    $podeVer = $isSuperAdmin || ($entrada->setor->isCAF() && $setoresFinanceiro->contains($entrada->setor_id));
+                }
                 $valorTotalNota = 0;
                 $temItensComValor = false;
 
@@ -277,15 +290,44 @@ class RelatoriosController extends Controller
             // Buscar todos os resultados
             $results = $query->get();
 
+            // BATCH LOADING DE LOTES (Eliminando N+1)
+            $produtosIds = [];
+            $lotes = [];
+            $setoresIds = [];
+            
+            foreach ($results as $mov) {
+                if ($mov->setor_destino_id) {
+                    $setoresIds[] = $mov->setor_destino_id;
+                    foreach ($mov->itens as $item) {
+                        if ($item->lote) {
+                            $produtosIds[] = $item->produto_id;
+                            $lotes[] = $item->lote;
+                        }
+                    }
+                }
+            }
+            
+            $lotesPreloaded = collect();
+            if (!empty($produtosIds) && !empty($lotes) && !empty($setoresIds)) {
+                $produtosIds = array_unique($produtosIds);
+                $lotes = array_unique($lotes);
+                $setoresIds = array_unique($setoresIds);
+                
+                $lotesPreloaded = \App\Models\EstoqueLote::whereIn('produto_id', $produtosIds)
+                    ->whereIn('lote', $lotes)
+                    ->whereIn('setor_id', $setoresIds)
+                    ->get(['produto_id', 'lote', 'setor_id', 'data_fabricacao', 'data_vencimento'])
+                    ->keyBy(function($item) {
+                        return $item->produto_id . '-' . $item->lote . '-' . $item->setor_id;
+                    });
+            }
+
             // Enriquecer os itens com informações de lote (data_fabricacao e data_vencimento)
-            $results->each(function ($movimentacao) {
-                $movimentacao->itens->each(function ($item) use ($movimentacao) {
+            $results->each(function ($movimentacao) use ($lotesPreloaded) {
+                $movimentacao->itens->each(function ($item) use ($movimentacao, $lotesPreloaded) {
                     if ($item->lote && $movimentacao->setor_destino_id) {
-                        // Buscar informações do lote na tabela estoque_lote
-                        $loteInfo = \App\Models\EstoqueLote::where('produto_id', $item->produto_id)
-                            ->where('lote', $item->lote)
-                            ->where('setor_id', $movimentacao->setor_destino_id) // Setor que forneceu
-                            ->first(['data_fabricacao', 'data_vencimento']);
+                        $key = $item->produto_id . '-' . $item->lote . '-' . $movimentacao->setor_destino_id;
+                        $loteInfo = $lotesPreloaded->get($key);
                         
                         if ($loteInfo) {
                             $item->data_fabricacao = $loteInfo->data_fabricacao;
@@ -438,15 +480,44 @@ class RelatoriosController extends Controller
             // Buscar todos os resultados
             $results = $query->get();
 
+            // BATCH LOADING DE LOTES (Eliminando N+1)
+            $produtosIds = [];
+            $lotes = [];
+            $setoresIds = [];
+            
+            foreach ($results as $mov) {
+                if ($mov->setor_destino_id) {
+                    $setoresIds[] = $mov->setor_destino_id;
+                    foreach ($mov->itens as $item) {
+                        if ($item->lote) {
+                            $produtosIds[] = $item->produto_id;
+                            $lotes[] = $item->lote;
+                        }
+                    }
+                }
+            }
+            
+            $lotesPreloaded = collect();
+            if (!empty($produtosIds) && !empty($lotes) && !empty($setoresIds)) {
+                $produtosIds = array_unique($produtosIds);
+                $lotes = array_unique($lotes);
+                $setoresIds = array_unique($setoresIds);
+                
+                $lotesPreloaded = \App\Models\EstoqueLote::whereIn('produto_id', $produtosIds)
+                    ->whereIn('lote', $lotes)
+                    ->whereIn('setor_id', $setoresIds)
+                    ->get(['produto_id', 'lote', 'setor_id', 'data_fabricacao', 'data_vencimento'])
+                    ->keyBy(function($item) {
+                        return $item->produto_id . '-' . $item->lote . '-' . $item->setor_id;
+                    });
+            }
+
             // Enriquecer os itens com informações de lote (data_fabricacao e data_vencimento)
-            $results->each(function ($movimentacao) {
-                $movimentacao->itens->each(function ($item) use ($movimentacao) {
-                    if ($item->lote) {
-                        // Buscar informações do lote na tabela estoque_lote
-                        $loteInfo = \App\Models\EstoqueLote::where('produto_id', $item->produto_id)
-                            ->where('lote', $item->lote)
-                            ->where('setor_id', $movimentacao->setor_destino_id) // Setor que forneceu
-                            ->first(['data_fabricacao', 'data_vencimento']);
+            $results->each(function ($movimentacao) use ($lotesPreloaded) {
+                $movimentacao->itens->each(function ($item) use ($movimentacao, $lotesPreloaded) {
+                    if ($item->lote && $movimentacao->setor_destino_id) {
+                        $key = $item->produto_id . '-' . $item->lote . '-' . $movimentacao->setor_destino_id;
+                        $loteInfo = $lotesPreloaded->get($key);
                         
                         if ($loteInfo) {
                             $item->data_fabricacao = $loteInfo->data_fabricacao;
