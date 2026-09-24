@@ -175,4 +175,70 @@ class DevolucaoPedidoTest extends TestCase
         $dataNaoExiste = $responseNaoExiste->json('data');
         $this->assertCount(0, $dataNaoExiste);
     }
+
+    public function test_bloqueio_edicao_quando_pedido_nao_for_rascunho()
+    {
+        // $this->movimentacao tem status 'A' (Atendido/Aprovado)
+        $response = $this->actingAs($this->user)->postJson("/api/movimentacao/{$this->movimentacao->id}/update-rascunho", [
+            'observacao' => 'Tentativa de editar pedido aprovado',
+            'itens' => [
+                [
+                    'produto_id' => $this->produto->id,
+                    'quantidade_solicitada' => 2
+                ]
+            ]
+        ]);
+
+        $response->assertStatus(422)
+                 ->assertJsonPath('status', false)
+                 ->assertJsonPath('message', 'Apenas pedidos em rascunho podem ser editados.');
+    }
+
+    public function test_rejeicao_quantidade_decimal_em_devolucao()
+    {
+        $response = $this->actingAs($this->user)->postJson("/api/movimentacao/{$this->movimentacao->id}/devolver", [
+            'item_movimentacao_id' => $this->itemMovimentacao->id,
+            'lote' => 'LOTE-TESTE-1',
+            'quantidade' => 1.5, // Decimal deve ser estritamente rejeitado
+            'motivo' => 'Teste decimal'
+        ]);
+
+        $response->assertStatus(422)
+                 ->assertJsonValidationErrors(['quantidade']);
+    }
+
+    public function test_devolucao_expoe_numero_pedido_e_eager_loading_responsaveis()
+    {
+        $response = $this->actingAs($this->user)->postJson("/api/movimentacao/{$this->movimentacao->id}/devolver", [
+            'item_movimentacao_id' => $this->itemMovimentacao->id,
+            'lote' => 'LOTE-TESTE-1',
+            'quantidade' => 2,
+            'motivo' => 'Devolução inteira válida'
+        ]);
+
+        $response->assertStatus(200);
+
+        // Verifica na listagem o eager loading de usuario e aprovador
+        $resList = $this->actingAs($this->user)->postJson("/api/movimentacao/listBySetor", [
+            'setor_id' => $this->setorDistribuidor->id
+        ]);
+
+        $resList->assertStatus(200);
+        $item = $resList->json('data.0');
+        $this->assertNotNull($item['usuario']);
+        $this->assertEquals($this->user->id, $item['usuario']['id']);
+        $this->assertNotNull($item['aprovador']);
+        $this->assertEquals($this->user->id, $item['aprovador']['id']);
+
+        // Verifica o show
+        $resShow = $this->actingAs($this->user)->getJson("/api/movimentacao/{$this->movimentacao->id}");
+        $resShow->assertStatus(200);
+        $showData = $resShow->json('data');
+        $this->assertNotNull($showData['usuario']);
+        $this->assertNotNull($showData['aprovador']);
+        $this->assertNotEmpty($showData['devolucoes']);
+        $this->assertEquals($this->movimentacao->id, $showData['devolucoes'][0]['numero_pedido']);
+        $this->assertIsInt($showData['devolucoes'][0]['quantidade']);
+        $this->assertEquals(2, $showData['devolucoes'][0]['quantidade']);
+    }
 }

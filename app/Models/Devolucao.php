@@ -15,10 +15,25 @@ class Devolucao extends Model
         'movimentacao_id',
         'item_movimentacao_id',
         'lote',
+        'quantidade_solicitada',
+        'quantidade_aprovada',
         'quantidade',
         'motivo',
         'usuario_id'
     ];
+
+    protected $appends = ['numero_pedido'];
+
+    protected $casts = [
+        'quantidade' => 'integer',
+        'quantidade_solicitada' => 'integer',
+        'quantidade_aprovada' => 'integer',
+    ];
+
+    public function getNumeroPedidoAttribute()
+    {
+        return $this->movimentacao_id;
+    }
 
     public function movimentacao()
     {

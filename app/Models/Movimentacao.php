@@ -11,7 +11,7 @@ class Movimentacao extends Model
 
     protected $table = 'movimentacao';
     protected $fillable = ['usuario_id', 'setor_origem_id', 'setor_destino_id', 'tipo', 'data_hora', 'observacao', 'status_solicitacao', 'aprovador_usuario_id'];
-    protected $appends = ['data_formatada', 'data'];
+    protected $appends = ['data_formatada', 'data', 'numero_pedido', 'respondido_por', 'avaliado_por'];
 
     public function getDataFormatadaAttribute()
     {
@@ -22,6 +22,24 @@ class Movimentacao extends Model
     public function getDataAttribute()
     {
         return $this->getDataFormatadaAttribute();
+    }
+
+    public function getNumeroPedidoAttribute()
+    {
+        if ($this->tipo === 'D' && !empty($this->observacao) && preg_match('/pedido #(\d+)/i', $this->observacao, $matches)) {
+            return (int) $matches[1];
+        }
+        return $this->id;
+    }
+
+    public function getRespondidoPorAttribute()
+    {
+        return $this->aprovador;
+    }
+
+    public function getAvaliadoPorAttribute()
+    {
+        return $this->aprovador;
     }
 
     public function usuario()

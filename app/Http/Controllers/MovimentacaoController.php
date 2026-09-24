@@ -16,7 +16,11 @@ class MovimentacaoController extends Controller
     // Criar movimentação (pode ser rascunho ou pendente)
     public function store(Request $request)
     {
+        $userId = auth()->id() ?: $request->input('usuario_id');
         $data = $request->only(['usuario_id', 'setor_origem_id', 'setor_destino_id', 'tipo', 'observacao', 'status_solicitacao', 'itens']);
+        if ($userId) {
+            $data['usuario_id'] = $userId;
+        }
 
         // Normalizar itens: aceitar `quantidade` do front e mapear para `quantidade_solicitada`
         if (!empty($data['itens']) && is_array($data['itens'])) {
@@ -35,6 +39,9 @@ class MovimentacaoController extends Controller
         // aprovadas exigem ao menos um item para não gerar transferência fantasma.
         $isRascunho = ($data['status_solicitacao'] ?? 'P') === 'C';
         $itensRules = $isRascunho ? ['nullable', 'array'] : ['required', 'array', 'min:1'];
+        $qtdRule = ($data['tipo'] ?? '') === 'D'
+            ? 'required_with:itens|integer|min:1'
+            : 'required_with:itens|numeric|min:0.0001';
 
         // Tarefa 1: Pendente de mover para um MovimentacaoRequest no futuro
         $validator = Validator::make($data, [
@@ -48,7 +55,7 @@ class MovimentacaoController extends Controller
             'setor_destino_id' => 'nullable|integer|exists:setores,id',
             'itens' => $itensRules,
             'itens.*.produto_id' => 'required_with:itens|integer|exists:produtos,id',
-            'itens.*.quantidade_solicitada' => 'required_with:itens|numeric|min:0.0001'
+            'itens.*.quantidade_solicitada' => $qtdRule
         ]);
 
         if ($validator->fails()) {
@@ -156,7 +163,7 @@ class MovimentacaoController extends Controller
             return response()->json(['status' => false, 'message' => 'setor_id (ou unidade_id) é obrigatório'], 422);
         }
 
-        $query = Movimentacao::with(['usuario', 'setorOrigem', 'setorDestino', 'itens.produto', 'devolucoes.usuario'])
+        $query = Movimentacao::with(['usuario', 'aprovador', 'setorOrigem', 'setorDestino', 'itens.produto', 'devolucoes.usuario'])
             ->where(function ($q) use ($setorId) {
                 $q->where('setor_origem_id', $setorId)
                   ->orWhere('setor_destino_id', $setorId);
@@ -208,7 +215,7 @@ class MovimentacaoController extends Controller
     // Detalhes / itens da movimentação
     public function show($id)
     {
-        $mov = Movimentacao::with(['itens.produto.unidadeMedida', 'usuario', 'setorOrigem', 'setorDestino', 'aprovador:id,name', 'devolucoes.usuario'])->find($id);
+        $mov = Movimentacao::with(['itens.produto.unidadeMedida', 'usuario', 'aprovador', 'setorOrigem', 'setorDestino', 'devolucoes.usuario'])->find($id);
         if (!$mov) {
             return response()->json(['status' => false, 'message' => 'Movimentação não encontrada'], 404);
         }
@@ -280,7 +287,7 @@ class MovimentacaoController extends Controller
         }
 
         try {
-            DB::beginTransaction();
+            return DB::transaction(function () use ($action, $id, $mov, $itens) {
 
             Log::info("Processando ação: $action para Movimentacao ID: $id");
 
@@ -308,11 +315,10 @@ class MovimentacaoController extends Controller
                 if (!empty($itens) && is_array($itens)) {
                     foreach ($itens as $itemData) {
                         if (isset($itemData['quantidade_liberada']) && (float) $itemData['quantidade_liberada'] <= 0) {
-                            DB::rollBack();
-                            return response()->json([
+                            throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
                                 'status' => false,
                                 'message' => 'A quantidade aprovada deve ser estritamente maior que zero.'
-                            ], 422);
+                            ], 422));
                         }
                         if (isset($itemData['id']) && isset($itemData['quantidade_liberada'])) {
                             $quantidadesLiberadas[$itemData['id']] = (float) $itemData['quantidade_liberada'];
@@ -321,11 +327,10 @@ class MovimentacaoController extends Controller
                 }
 
                 if ($mov->itens->isEmpty()) {
-                    DB::rollBack();
-                    return response()->json([
+                    throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
                         'status' => false,
                         'message' => 'Não é possível aprovar uma movimentação sem itens.'
-                    ], 422);
+                    ], 422));
                 }
  
                 $isDevolucao = ($mov->tipo === 'D');
@@ -343,11 +348,10 @@ class MovimentacaoController extends Controller
                     if ($qtdLiberar <= 0) {
                         if ($isDevolucao) continue; // Itens não devolvidos são ignorados
                         
-                        DB::rollBack();
-                        return response()->json([
+                        throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
                             'status' => false,
                             'message' => 'A quantidade aprovada deve ser estritamente maior que zero.'
-                        ], 422);
+                        ], 422));
                     }
 
                     // Se for devolução de um setor SEM controle de estoque físico (enfermarias, clínicas),
@@ -392,12 +396,11 @@ class MovimentacaoController extends Controller
                 }
 
                 if (!empty($errosEstoque)) {
-                    DB::rollBack();
-                    return response()->json([
+                    throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
                         'status' => false,
                         'message' => 'Estoque insuficiente.',
                         'erros' => $errosEstoque
-                    ], 422);
+                    ], 422));
                 }
 
                 // Atualizar quantidades liberadas e transferir estoque
@@ -561,11 +564,11 @@ class MovimentacaoController extends Controller
                 }
 
                 $mov->status_solicitacao = 'A';
-                $mov->aprovador_usuario_id = auth()->id();
+                $mov->aprovador_usuario_id = auth()->id() ?: ($aprovadorId ?? null);
 
             } elseif ($action === 'reject') {
                 $mov->status_solicitacao = 'R';
-                $mov->aprovador_usuario_id = auth()->id();
+                $mov->aprovador_usuario_id = auth()->id() ?: ($aprovadorId ?? null);
             } elseif ($action === 'submit') {
                 // sair de rascunho para pendente
                 $mov->status_solicitacao = 'P';
@@ -574,8 +577,7 @@ class MovimentacaoController extends Controller
                 // solicitante cancelando o pedido pendente
                 if ($mov->status_solicitacao !== 'P') {
                     Log::warning("Tentativa de cancelar pedido não pendente. Status: " . $mov->status_solicitacao);
-                    DB::rollBack();
-                    return response()->json(['status' => false, 'message' => 'Apenas pendentes podem ser canceladas.'], 422);
+                    throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json(['status' => false, 'message' => 'Apenas pendentes podem ser canceladas.'], 422));
                 }
                 $mov->status_solicitacao = 'X'; // X = Cancelado pelo solicitante
                 Log::info("Status alterado para X");
@@ -584,13 +586,14 @@ class MovimentacaoController extends Controller
             $mov->save();
             Log::info("Movimentação salva com sucesso.");
             
-            DB::commit();
             Log::info("Transação commitada.");
 
             return response()->json(['status' => true, 'data' => $mov]);
+        }, 5);
 
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+            throw $e;
         } catch (\Exception $e) {
-            DB::rollBack();
             Log::error('Erro ao processar: ' . $e->getMessage());
             return response()->json(['status' => false, 'message' => 'Erro interno.'], 500);
         }
@@ -640,15 +643,20 @@ class MovimentacaoController extends Controller
         return response()->json(['status' => true]);
     }
 
-    // Atualizar rascunho ou pedido pendente (substituir itens, atualizar setor de origem e observação)
+    public function update(Request $request, $id)
+    {
+        return $this->updateRascunho($request, $id);
+    }
+
+    // Atualizar rascunho (apenas movimentações em rascunho podem ser editadas)
     public function updateRascunho(Request $request, $id)
     {
         $mov = Movimentacao::with('itens')->find($id);
         if (!$mov) {
             return response()->json(['status' => false, 'message' => 'Movimentação não encontrada'], 404);
         }
-        if (!in_array($mov->status_solicitacao, ['C', 'P'])) {
-            return response()->json(['status' => false, 'message' => 'Só é possível editar movimentações em rascunho ou pendentes'], 403);
+        if ($mov->status_solicitacao !== 'C') {
+            return response()->json(['status' => false, 'message' => 'Apenas pedidos em rascunho podem ser editados.'], 422);
         }
 
         $data = $request->only(['setor_origem_id', 'observacao', 'itens', 'status_solicitacao']);
@@ -1039,7 +1047,7 @@ class MovimentacaoController extends Controller
         if (!$request->has('itens')) {
             $validated = Validator::make($request->all(), [
                 'item_movimentacao_id' => 'required|integer',
-                'quantidade' => 'required|numeric|gt:0',
+                'quantidade' => 'required|integer|min:1',
                 'lote' => 'required|string',
                 'motivo' => 'nullable|string|max:255'
             ]);
@@ -1063,9 +1071,9 @@ class MovimentacaoController extends Controller
                 return response()->json(['status' => false, 'message' => 'Item não pertence a esta movimentação.'], 422);
             }
 
-            $quantidadeADevolver = (float) $request->input('quantidade');
+            $quantidadeADevolver = (int) $request->input('quantidade');
             $loteNome = $request->input('lote');
-            $userId = auth()->id();
+            $userId = auth()->id() ?: ($movimentacao->usuario_id ?? null);
             $motivo = $request->input('motivo');
 
             $lotesOriginal = json_decode($itemMov->lote, true);
@@ -1169,7 +1177,7 @@ class MovimentacaoController extends Controller
             'motivo' => 'nullable|string|max:255',
             'itens' => 'required|array|min:1',
             'itens.*.item_movimentacao_id' => 'required|integer',
-            'itens.*.quantidade_devolvendo' => 'required|numeric|min:0',
+            'itens.*.quantidade_devolvendo' => 'required|integer|min:0',
         ]);
 
         if ($validated->fails()) {
@@ -1181,6 +1189,18 @@ class MovimentacaoController extends Controller
             ], 422);
         }
 
+        // Filtrar apenas itens com quantidade_devolvendo > 0
+        $itensParaDevolver = array_filter($request->input('itens'), function ($reqItem) {
+            return isset($reqItem['quantidade_devolvendo']) && (int) $reqItem['quantidade_devolvendo'] > 0;
+        });
+
+        if (empty($itensParaDevolver)) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Informe a quantidade (mínimo 1) para ao menos um item a ser devolvido.'
+            ], 422);
+        }
+
         $movimentacaoOriginal = Movimentacao::with('itens')->find($id);
         if (!$movimentacaoOriginal) {
             return response()->json(['status' => false, 'message' => 'Movimentação original não encontrada.'], 404);
@@ -1189,7 +1209,7 @@ class MovimentacaoController extends Controller
         try {
             DB::beginTransaction();
 
-            $userId = auth()->id();
+            $userId = auth()->id() ?: ($movimentacaoOriginal->usuario_id ?? null);
 
             // A devolução inverte a origem e destino
             $mov = Movimentacao::create([
@@ -1203,11 +1223,11 @@ class MovimentacaoController extends Controller
                 'aprovador_usuario_id' => null,
             ]);
 
-            foreach ($request->input('itens') as $reqItem) {
+            foreach ($itensParaDevolver as $reqItem) {
                 $itemOriginal = $movimentacaoOriginal->itens->where('id', $reqItem['item_movimentacao_id'])->first();
                 if (!$itemOriginal) continue;
 
-                $qtdDevolvendo = (float) $reqItem['quantidade_devolvendo'];
+                $qtdDevolvendo = (int) $reqItem['quantidade_devolvendo'];
 
                 // Valida se a quantidade a devolver não é maior do que a liberada na original
                 if ($qtdDevolvendo > $itemOriginal->quantidade_liberada) {
@@ -1221,8 +1241,8 @@ class MovimentacaoController extends Controller
                 \App\Models\ItemMovimentacao::create([
                     'movimentacao_id' => $mov->id,
                     'produto_id' => $itemOriginal->produto_id,
-                    'quantidade_solicitada' => $itemOriginal->quantidade_solicitada,
-                    'quantidade_liberada' => $itemOriginal->quantidade_liberada,
+                    'quantidade_solicitada' => (int) $itemOriginal->quantidade_solicitada,
+                    'quantidade_liberada' => (int) $itemOriginal->quantidade_liberada,
                     'quantidade_devolvendo' => $qtdDevolvendo,
                     'lote' => $itemOriginal->lote,
                 ]);
