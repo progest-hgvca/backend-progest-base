@@ -200,8 +200,25 @@ class MovimentacaoController extends Controller
                 }
                 $m->total_itens = $distinctCount;
 
+                // Alias legível para o frontend
+                $m->numero_pedido = $m->id;
+
                 // Adiciona a flag tem_devolucao
                 $m->tem_devolucao = $m->devolucoes && $m->devolucoes->count() > 0;
+
+                // Normaliza o campo `lote` de cada item: parseia o JSON e expõe
+                // como `lotes_parsed` (array) para consumo direto no frontend.
+                if ($m->relationLoaded('itens')) {
+                    foreach ($m->itens as $item) {
+                        $raw = $item->lote;
+                        if (is_string($raw) && !empty($raw)) {
+                            $decoded = json_decode($raw, true);
+                            $item->lotes_parsed = is_array($decoded) ? $decoded : [['lote' => $raw, 'qtd' => null]];
+                        } else {
+                            $item->lotes_parsed = [];
+                        }
+                    }
+                }
 
                 return $m;
             });
@@ -221,6 +238,18 @@ class MovimentacaoController extends Controller
         }
 
         $mov->tem_devolucao = $mov->devolucoes && $mov->devolucoes->count() > 0;
+        $mov->numero_pedido  = $mov->id;
+
+        // Normaliza `lotes_parsed` para cada item
+        foreach ($mov->itens as $item) {
+            $raw = $item->lote;
+            if (is_string($raw) && !empty($raw)) {
+                $decoded = json_decode($raw, true);
+                $item->lotes_parsed = is_array($decoded) ? $decoded : [['lote' => $raw, 'qtd' => null]];
+            } else {
+                $item->lotes_parsed = [];
+            }
+        }
 
         return response()->json(['status' => true, 'data' => $mov]);
     }
