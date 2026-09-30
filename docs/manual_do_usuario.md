@@ -68,30 +68,30 @@ A base de testes conta com cenários hiper-realistas nos seguintes setores:
 Para manter a integridade fiscal e o controle de rastreabilidade, o ProGest divide todos os setores do complexo hospitalar em exatamente **três categorias operacionais**:
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ 1. CAF (Central de Abastecimento Farmacêutico)                              │
-│    • Coração do abastecimento hospitalar.                                   │
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 1. CAF (Central de Abastecimento Farmacêutico)                               │
+│    • Coração do abastecimento hospitalar.                                    │
 │    • ÚNICO setor autorizado a registrar entradas de NF de fornecedores.      │
 │    • Não realiza requisições internas (é o topo do abastecimento hospitalar).│
-└──────────────────────────────────────┬──────────────────────────────────────┘
+└──────────────────────────────────────┬───────────────────────────────────────┘
                                        │ Fornece via Transferência (T)
                                        ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ 2. Setores com Estoque (ex: Farmácias Satélites, Almoxarifados Locais)      │
-│    • Possuem inventário físico local e controle de lotes.                   │
-│    • Não registram entradas por NF externa de compras.                      │
-│    • Abastecem-se exclusivamente requisitando transferências à CAF.         │
-│    • Atendem e dispensam materiais para setores assistenciais.              │
-└──────────────────────────────────────┬──────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 2. Setores com Estoque (ex: Farmácias Satélites, Almoxarifados Locais)       │
+│    • Possuem inventário físico local e controle de lotes.                    │
+│    • Não registram entradas por NF externa de compras.                       │
+│    • Abastecem-se exclusivamente requisitando transferências à CAF.          │
+│    • Atendem e dispensam materiais para setores assistenciais.               │
+└──────────────────────────────────────┬───────────────────────────────────────┘
                                        │ Fornece via Saída/Dispensação (S)
                                        ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ 3. Setores sem Estoque (ex: UTI, Enfermarias, Pronto Atendimento)          │
-│    • Setores puramente consumidores/assistenciais.                          │
-│    • Não realizam compras e não possuem controle de saldo permanente.       │
-│    • Solicitam itens aos distribuidores autorizados para consumo direto.    │
-│    • Podem apenas devolver sobras intactas de procedimentos à farmácia.     │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 3. Setores sem Estoque (ex: UTI, Enfermarias, Pronto Atendimento)            │
+│    • Setores puramente consumidores/assistenciais.                           │
+│    • Não realizam compras e não possuem controle de saldo permanente.        │
+│    • Solicitam itens aos distribuidores autorizados para consumo direto.     │
+│    • Podem apenas devolver sobras intactas de procedimentos à farmácia.      │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---

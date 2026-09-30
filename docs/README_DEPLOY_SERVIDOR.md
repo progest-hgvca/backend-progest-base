@@ -14,11 +14,13 @@ O sistema é modular e distribuído em **três repositórios Git oficiais**. Par
 ├── backend-progest-base/    ➜ Repositório: https://github.com/progest-hgvca/backend-progest-base.git
 ├── frontend-progest-base/   ➜ Repositório: https://github.com/progest-hgvca/frontend-progest-base.git
 │
+├── README.md                 ➜ Visão geral do projeto e guia de inicialização rápida
 ├── README_DEPLOY_SERVIDOR.md ➜ Este guia completo de handoff e subida em novo servidor
 ├── manual_do_usuario.md      ➜ Manual completo de uso (Solicitante, Almoxarife e Administrador)
-├── GUIA_DEPLOY_AWS.md        ➜ Passo a passo específico para instâncias AWS EC2 (Ubuntu)
-├── roteiro_testes_manuais_homologacao.md ➜ 7 fases e 35 cenários de teste para validação
 ├── perfis_implementados.md   ➜ Mapeamento de regras de negócio, permissões e governança
+├── mapeamento_fluxo_setores.md ➜ Classificação setorial (CAF, com estoque, sem estoque) e fluxos
+├── roteiro_testes_manuais_homologacao.md ➜ 7 fases e 35 cenários de teste para validação
+├── GUIA_DEPLOY_AWS.md        ➜ Passo a passo específico para instâncias AWS EC2 (Ubuntu)
 ├── relatorio_mudancas.md     ➜ Histórico de refatoração, travas transacionais e ledger
 ├── iniciar_local.ps1         ➜ Script PowerShell para inicialização rápida em ambiente Windows
 └── parar_local.ps1           ➜ Script PowerShell para parada limpa em ambiente Windows
@@ -252,6 +254,7 @@ docker exec backend-progest-base-progest-db-1 mysqldump -u progest_user -pproges
 
 Para aprofundamento das regras de negócio, testes e operação clínica, consulte:
 1. **[manual_do_usuario.md](manual_do_usuario.md):** Manual completo dos perfis Solicitante, Almoxarife e Administrador, abordando desde a criação de pedidos em busca cega até o Relatório de Medicamentos Controlados da Portaria 344/98.
-2. **[roteiro_testes_manuais_homologacao.md](roteiro_testes_manuais_homologacao.md):** Roteiro com 7 fases e 35 cenários de homologação hospitalar para validar o sistema antes da entrada oficial em operação.
-3. **[perfis_implementados.md](perfis_implementados.md):** Detalhamento das travas de segurança por perfil e permissões setoriais.
-4. **[relatorio_mudancas.md](relatorio_mudancas.md):** Registro das otimizações arquiteturais, Ledger imutável de estoque e travas transacionais.
+2. **[perfis_implementados.md](perfis_implementados.md):** Detalhamento das travas de segurança por perfil e permissões setoriais.
+3. **[mapeamento_fluxo_setores.md](mapeamento_fluxo_setores.md):** Classificação setorial (CAF, Setores com Estoque, Setores sem Estoque) e mapa topológico da rede de distribuição.
+4. **[roteiro_testes_manuais_homologacao.md](roteiro_testes_manuais_homologacao.md):** Roteiro com 7 fases e 35 cenários de homologação hospitalar para validar o sistema antes da entrada oficial em operação.
+5. **[relatorio_mudancas.md](relatorio_mudancas.md):** Registro das otimizações arquiteturais, Ledger imutável de estoque e travas transacionais.
