@@ -7,7 +7,12 @@ use Illuminate\Database\Eloquent\Model;
 class ItemMovimentacao extends Model
 {
     protected $table = 'item_movimentacao';
-    protected $fillable = ['movimentacao_id', 'produto_id', 'quantidade_solicitada', 'quantidade_liberada', 'quantidade_devolvendo', 'lote'];
+    protected $fillable = ['movimentacao_id', 'produto_id', 'quantidade_solicitada', 'quantidade_liberada', 'quantidade_devolvendo', 'lote', 'valor_unitario', 'valor_total'];
+
+    protected $casts = [
+        'valor_unitario' => 'decimal:4',
+        'valor_total'    => 'decimal:4',
+    ];
     protected $appends = ['codigo_simpass', 'codigo_simpas', 'data_formatada', 'lotes_parsed', 'numero_lote', 'validade', 'quantidade_devolvida', 'quantidade_original_atendida', 'quantidade_liberada_original', 'quantidade_aprovada_original'];
 
     public function getCodigoSimpassAttribute()

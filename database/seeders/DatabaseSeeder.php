@@ -28,6 +28,7 @@ class DatabaseSeeder extends Seeder
             FornecedoresSeeder::class,             // Fornecedores e distribuidores da área da saúde
             AdminInicialSeeder::class,             // Cria adminti no setor de TI
             CatalogoProdutosOficialSeeder::class,  // Grupos, Unidades de Medida e Catálogo oficial de produtos
+            RegrasProdutoSetorSeeder::class,       // Que grupos cada categoria de setor pode solicitar
         ]);
     }
 }

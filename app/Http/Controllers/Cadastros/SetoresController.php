@@ -35,6 +35,10 @@ class SetoresController
         $setor->status    = $setoresData['status'] ?? 'A';
         $setor->estoque   = $setoresData['estoque'] ?? false;
         $setor->tipo      = $setoresData['tipo'] ?? 'Material';
+        // Sem categoria explícita, deduz pela mesma regra do backfill: quem guarda
+        // estoque é farmácia, quem só movimenta Material é administrativo.
+        $setor->categoria = $setoresData['categoria']
+            ?? ($setor->estoque ? 'Farmacia' : (($setor->tipo === 'Material') ? 'Administrativo' : 'Internamento'));
 
         try {
             DB::beginTransaction();
@@ -104,7 +108,7 @@ class SetoresController
         }
 
         // Aplicar filtros com Whitelist de Colunas (Proteção SQL Injection)
-        $allowedColumns = ['id', 'polo_id', 'nome', 'descricao', 'status', 'estoque', 'tipo'];
+        $allowedColumns = ['id', 'polo_id', 'nome', 'descricao', 'status', 'estoque', 'tipo', 'categoria'];
         foreach ($filters as $key => $condition) {
             if (is_array($condition)) {
                 foreach ($condition as $coluna => $valor) {
@@ -127,13 +131,13 @@ class SetoresController
 
         if (!isset($data['paginate'])) {
             $setores = $query
-                ->select('id', 'polo_id', 'nome', 'descricao', 'status', 'estoque', 'tipo')
+                ->select('id', 'polo_id', 'nome', 'descricao', 'status', 'estoque', 'tipo', 'categoria')
                 ->orderBy('nome')
                 ->get();
         } else {
             $perPage = $data['per_page'] ?? 50;
             $setores = $query
-                ->select('id', 'polo_id', 'nome', 'descricao', 'status', 'estoque', 'tipo')
+                ->select('id', 'polo_id', 'nome', 'descricao', 'status', 'estoque', 'tipo', 'categoria')
                 ->orderBy('nome')
                 ->paginate($perPage);
         }
@@ -169,6 +173,7 @@ class SetoresController
         $setor->status    = $setoresData['status'] ?? 'A';
         $setor->estoque   = $setoresData['estoque'] ?? $setor->estoque;
         $setor->tipo      = $setoresData['tipo'] ?? $setor->tipo;
+        $setor->categoria = $setoresData['categoria'] ?? $setor->categoria;
 
         try {
             DB::beginTransaction();
@@ -427,7 +432,7 @@ class SetoresController
             // Super admin e Admin CAF têm acesso a todos os setores
             if ($user->isSuperAdmin() || $user->isAdminCaf()) {
                 $setores = Setores::with(['polo'])
-                    ->select('id', 'polo_id', 'nome', 'descricao', 'status', 'estoque', 'tipo')
+                    ->select('id', 'polo_id', 'nome', 'descricao', 'status', 'estoque', 'tipo', 'categoria')
                     ->where('status', 'A')
                     ->orderBy('nome')
                     ->get();

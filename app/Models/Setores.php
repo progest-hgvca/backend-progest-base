@@ -17,7 +17,19 @@ class Setores extends Model
         'descricao',
         'status',
         'estoque',
-        'tipo'
+        'tipo',
+        'categoria'
+    ];
+
+    /**
+     * Classificação funcional do setor, usada para decidir o que ele pode solicitar.
+     */
+    public const CATEGORIAS = ['Farmacia', 'Internamento', 'Administrativo'];
+
+    public const CATEGORIA_LABELS = [
+        'Farmacia'       => 'Farmácia',
+        'Internamento'   => 'Internamento',
+        'Administrativo' => 'Administrativo',
     ];
 
     protected $casts = [
@@ -67,21 +79,110 @@ class Setores extends Model
     }
 
     /**
-     * Obter produtos disponíveis para este setor baseado no tipo
+     * Tipos de grupo de produto que este setor movimenta.
+     * Setor 'Ambos' aceita as duas naturezas.
      */
-    public function produtosDisponiveis()
+    public function tiposCompativeis(): array
     {
-        return Produto::whereHas('grupoProduto', function ($query) {
-            $query->where('tipo', $this->tipo);
-        });
+        return $this->tipo === 'Ambos' ? ['Medicamento', 'Material'] : [$this->tipo];
     }
 
     /**
-     * Obter grupos de produtos compatíveis com este setor
+     * IDs dos grupos de produto liberados para a categoria deste setor.
+     *
+     * Retorna null quando não há nenhuma regra cadastrada para a categoria —
+     * tratado pelos chamadores como "sem restrição", para que a ausência do
+     * seeder de regras não bloqueie o sistema inteiro.
+     */
+    public function gruposPermitidosIds(): ?array
+    {
+        if (empty($this->categoria)) {
+            return null;
+        }
+
+        $ids = CategoriaGrupoProduto::porCategoria($this->categoria)
+            ->pluck('grupo_produto_id')
+            ->all();
+
+        return empty($ids) ? null : $ids;
+    }
+
+    /**
+     * Query dos produtos que este setor pode solicitar.
+     *
+     * A cadeia de decisão, nesta ordem:
+     *   1. compatibilidade de natureza (setores.tipo vs grupo_produto.tipo);
+     *   2. lista branca de grupos da categoria do setor;
+     *   3. exceções por setor, que liberam ou bloqueiam produtos individuais.
+     */
+    public function produtosDisponiveis()
+    {
+        $tipos              = $this->tiposCompativeis();
+        $gruposPermitidos   = $this->gruposPermitidosIds();
+        $excecoesLiberadas  = SetorProdutoExcecao::where('setor_id', $this->id)
+            ->liberacoes()->pluck('produto_id')->all();
+        $excecoesBloqueadas = SetorProdutoExcecao::where('setor_id', $this->id)
+            ->bloqueios()->pluck('produto_id')->all();
+
+        $query = Produto::query();
+
+        $query->where(function ($q) use ($tipos, $gruposPermitidos, $excecoesLiberadas) {
+            // Caminho normal: passa pelo tipo e pela lista branca da categoria.
+            $q->where(function ($regra) use ($tipos, $gruposPermitidos) {
+                $regra->whereHas('grupoProduto', function ($gq) use ($tipos) {
+                    $gq->whereIn('tipo', $tipos);
+                });
+
+                if ($gruposPermitidos !== null) {
+                    $regra->whereIn('grupo_produto_id', $gruposPermitidos);
+                }
+            });
+
+            // Liberações pontuais furam a regra da categoria.
+            if (!empty($excecoesLiberadas)) {
+                $q->orWhereIn('produtos.id', $excecoesLiberadas);
+            }
+        });
+
+        // Bloqueios pontuais vencem qualquer liberação acima.
+        if (!empty($excecoesBloqueadas)) {
+            $query->whereNotIn('produtos.id', $excecoesBloqueadas);
+        }
+
+        return $query;
+    }
+
+    /**
+     * Grupos de produto que este setor pode solicitar.
      */
     public function gruposCompativeis()
     {
-        return GrupoProduto::where('tipo', $this->tipo)->where('status', 'A');
+        $query = GrupoProduto::whereIn('tipo', $this->tiposCompativeis())
+            ->where('status', 'A');
+
+        $gruposPermitidos = $this->gruposPermitidosIds();
+        if ($gruposPermitidos !== null) {
+            $query->whereIn('id', $gruposPermitidos);
+        }
+
+        return $query;
+    }
+
+    /**
+     * Este setor pode solicitar o produto informado?
+     * Usado como trava de servidor na criação de movimentações.
+     */
+    public function podeSolicitarProduto($produtoId): bool
+    {
+        return $this->produtosDisponiveis()->where('produtos.id', $produtoId)->exists();
+    }
+
+    /**
+     * Regras de categoria e exceções cadastradas para este setor.
+     */
+    public function excecoesProduto()
+    {
+        return $this->hasMany(SetorProdutoExcecao::class, 'setor_id');
     }
 
     /**
