@@ -13,6 +13,7 @@ use App\Http\Controllers\Cadastros\EstoqueController as CadastrosEstoqueControll
 use App\Http\Controllers\Cadastros\RegimeContratacaoController;
 use App\Http\Controllers\Cadastros\GrupoProdutoController;
 use App\Http\Controllers\Cadastros\PoloController;
+use App\Http\Controllers\Cadastros\RegrasProdutoController;
 use App\Http\Controllers\EstoqueController;
 use App\Http\Controllers\EstoqueLoteController;
 use App\Http\Controllers\EntradaController;
@@ -158,6 +159,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/movimentacoes/{id}/status',          [MovimentacaoController::class, 'updateStatus']);
     Route::post('/movimentacao/{id}/update-rascunho',  [MovimentacaoController::class, 'updateRascunho']);
     Route::post('/movimentacao/{id}/devolver',         [MovimentacaoController::class, 'devolver']);
+    Route::post('/movimentacao/{id}/confirmar-recebimento', [MovimentacaoController::class, 'confirmarRecebimento']);
+
+    // --------------------------------------------------------
+    // Regras de produtos por categoria de setor
+    // --------------------------------------------------------
+    Route::post('/regras-produto/list',    [RegrasProdutoController::class, 'list']);
+    Route::post('/regras-produto/sync',    [RegrasProdutoController::class, 'sync']);
+    Route::post('/regras-produto/excecao', [RegrasProdutoController::class, 'excecao']);
+    Route::post('/regras-produto/preview', [RegrasProdutoController::class, 'preview']);
 
     // --------------------------------------------------------
     // Polo / Unidade — escrita protegida; leitura pública abaixo
@@ -219,6 +229,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Relatórios Financeiros
     Route::post('/relatorios/financeiro/entradas',     [RelatoriosController::class, 'listEntradasFinanceiras']);
     Route::post('/relatorios/financeiro/saidas',       [RelatoriosController::class, 'listSaidasFinanceiras']);
+    Route::post('/relatorios/financeiro/por-pedido',   [RelatoriosController::class, 'listFinanceiroPorPedido']);
+    Route::post('/relatorios/financeiro/por-setor',    [RelatoriosController::class, 'listFinanceiroPorSetor']);
 
     // ============================================================
     // ROTAS DE LEITURA (AGORA PROTEGIDAS)

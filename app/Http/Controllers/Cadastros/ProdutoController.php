@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Cadastros;
 
 use App\Models\Produto;
 use App\Models\GrupoProduto;
+use App\Models\Setores;
 use App\Models\UnidadeMedida;
 use App\Http\Requests\ProdutoRequest;
 use Illuminate\Http\Request;
@@ -77,6 +78,14 @@ class ProdutoController
                     }
                     if (!empty($filters['nome'])) {
                         $query->where('produtos.nome', 'LIKE', '%' . $filters['nome'] . '%');
+                    }
+                    // Restringe o catálogo ao que o setor pode efetivamente solicitar
+                    // (natureza do setor + lista branca da categoria + exceções).
+                    if (!empty($filters['setor_id'])) {
+                        $setor = Setores::find($filters['setor_id']);
+                        if ($setor) {
+                            $query->whereIn('produtos.id', $setor->produtosDisponiveis()->select('produtos.id'));
+                        }
                     }
                 } else {
                     // Formato array legado: [{"status": "A"}, {"nome": "dipirona"}]

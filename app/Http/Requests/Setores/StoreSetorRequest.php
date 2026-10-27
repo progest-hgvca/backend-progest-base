@@ -32,6 +32,7 @@ class StoreSetorRequest extends BaseFormRequest
             'status'         => 'sometimes|string|in:A,I',
             'estoque'        => 'sometimes|boolean',
             'tipo'           => 'sometimes|in:Medicamento,Material,Ambos',
+            'categoria'      => 'sometimes|nullable|in:Farmacia,Internamento,Administrativo',
             'distribuidor'   => 'nullable|array',
             'distribuidor.setor_distribuidor_id' => 'required_with:distribuidor|exists:setores,id',
             'distribuidores' => 'nullable|array',
@@ -49,6 +50,7 @@ class StoreSetorRequest extends BaseFormRequest
             'polo_id.exists'   => 'Polo selecionado não existe.',
             'nome.required'    => 'O nome do setor é obrigatório.',
             'tipo.in'          => 'Tipo inválido. Deve ser Medicamento, Material ou Ambos.',
+            'categoria.in'     => 'Categoria inválida. Deve ser Farmacia, Internamento ou Administrativo.',
         ];
     }
 }

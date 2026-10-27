@@ -15,6 +15,7 @@ use App\Http\Requests\Movimentacao\ProcessMovimentacaoRequest;
 use App\Http\Requests\Movimentacao\UpdateRascunhoRequest;
 use App\Http\Requests\Movimentacao\ConsumoInternoRequest;
 use App\Http\Requests\Movimentacao\DevolverRequest;
+use App\Http\Requests\Movimentacao\ConfirmarRecebimentoRequest;
 
 class MovimentacaoController extends Controller
 {
@@ -83,11 +84,43 @@ class MovimentacaoController extends Controller
             }
         }
 
+        // Trava de catálogo: o setor solicitante só pode pedir o que a sua categoria
+        // permite. Até aqui isso era apenas um filtro visual no frontend, então
+        // qualquer produto passava por chamada direta à API.
+        // Devoluções ('D') ficam de fora: o item já saiu num pedido anterior.
+        if (in_array($data['tipo'] ?? '', ['S', 'T']) && !empty($data['setor_destino_id']) && !empty($data['itens'])) {
+            $setorSolicitante = \App\Models\Setores::find($data['setor_destino_id']);
+            if ($setorSolicitante) {
+                $produtoIds = collect($data['itens'])->pluck('produto_id')->filter()->unique()->values();
+
+                if ($produtoIds->isNotEmpty()) {
+                    $permitidos = $setorSolicitante->produtosDisponiveis()
+                        ->whereIn('produtos.id', $produtoIds)
+                        ->pluck('produtos.id');
+
+                    $negados = $produtoIds->diff($permitidos);
+
+                    if ($negados->isNotEmpty()) {
+                        $nomes = \App\Models\Produto::whereIn('id', $negados)->pluck('nome')->implode(', ');
+                        $categoria = \App\Models\Setores::CATEGORIA_LABELS[$setorSolicitante->categoria] ?? 'deste setor';
+
+                        return response()->json([
+                            'status'  => false,
+                            'message' => "Os seguintes produtos não podem ser solicitados por um setor de {$categoria}: {$nomes}.",
+                            'produtos_negados' => $negados->values(),
+                        ], 422);
+                    }
+                }
+            }
+        }
+
         try {
             // tornar criação atômica: se falhar a criação dos itens, rollback
             $mov = DB::transaction(function () use ($data) {
                 $mov = Movimentacao::create([
-                    'usuario_id' => $data['usuario_id'],
+                    // Quem solicita é sempre o usuário autenticado — o valor enviado
+                    // pelo cliente é aceito apenas como fallback fora de contexto HTTP.
+                    'usuario_id' => auth()->id() ?: $data['usuario_id'],
                     'setor_origem_id' => $data['setor_origem_id'] ?? null,
                     'setor_destino_id' => $data['setor_destino_id'] ?? null,
                     'tipo' => $data['tipo'],
@@ -126,6 +159,8 @@ class MovimentacaoController extends Controller
         $query = Movimentacao::with([
             'usuario',
             'aprovador',
+            'atendente',
+            'recebedor',
             'setorOrigem.polo',
             'setorDestino.polo',
             'itens.produto.unidadeMedida',
@@ -204,6 +239,8 @@ class MovimentacaoController extends Controller
         $query = Movimentacao::with([
             'usuario',
             'aprovador',
+            'atendente',
+            'recebedor',
             'setorOrigem.polo',
             'setorDestino.polo',
             'itens.produto.unidadeMedida',
@@ -318,6 +355,8 @@ class MovimentacaoController extends Controller
             'itens.devolucoes',
             'usuario',
             'aprovador',
+            'atendente',
+            'recebedor',
             'setorOrigem.polo',
             'setorDestino.polo',
             'devolucoes.usuario',
@@ -405,7 +444,10 @@ class MovimentacaoController extends Controller
         }
 
         try {
-            return DB::transaction(function () use ($action, $id, $mov, $itens, $aprovadorId) {
+            // $aprovadorId e $request precisam entrar no closure: são usados no
+            // registro contábil (registrarMovimentacaoContabil) e na gravação
+            // dos responsáveis. Sem capturá-los, toda aprovação falhava com 500.
+            return DB::transaction(function () use ($action, $id, $mov, $itens, $aprovadorId, $request) {
 
             Log::info("Processando ação: $action para Movimentacao ID: $id");
 
@@ -634,6 +676,7 @@ class MovimentacaoController extends Controller
                         );
 
                         $item->lote = json_encode($lotesTransferidos);
+                        $this->registrarCustoDoItem($item, $lotesTransferidos, $qtdLiberar);
                         $item->save();
                     }
 
@@ -749,9 +792,19 @@ class MovimentacaoController extends Controller
                 $mov->status_solicitacao = 'A';
                 $mov->aprovador_usuario_id = auth()->id() ?: ($aprovadorId ?? null);
 
+                // Na prática quem aprova é quem separa os itens. Registrado em
+                // campo próprio para que a via impressa mostre o responsável, e
+                // não apenas o setor.
+                $mov->atendente_usuario_id = auth()->id() ?: ($aprovadorId ?? null);
+                $mov->atendido_em = now();
+
             } elseif ($action === 'reject') {
                 $mov->status_solicitacao = 'R';
                 $mov->aprovador_usuario_id = auth()->id() ?: ($aprovadorId ?? null);
+                // O frontend já enviava o motivo; até aqui ele era descartado.
+                $mov->motivo_rejeicao = $request->input('motivo_rejeicao')
+                    ?? $request->input('motivo')
+                    ?? $request->input('justificativa');
             } elseif ($action === 'submit') {
                 // sair de rascunho para pendente
                 $mov->status_solicitacao = 'P';
@@ -1027,6 +1080,47 @@ class MovimentacaoController extends Controller
      * Transfere quantidades entre lotes seguindo FIFO (vencimento mais próximo primeiro).
      * Deduz do setor de origem e incrementa no setor de destino (criando o registro se necessário).
      */
+    /**
+     * Congela no item o custo médio ponderado dos lotes efetivamente consumidos.
+     *
+     * O relatório financeiro de saídas não consegue redescobrir esse número
+     * depois: `item_movimentacao.lote` guarda um array de lotes, e o preço de
+     * um mesmo lote muda a cada nota de reposição. Por isso o custo é gravado
+     * aqui, no instante da baixa.
+     *
+     * Quando nenhum lote consumido tem preço (entradas antigas sem
+     * `valor_unitario`), grava null em vez de zero — zero afirmaria que o item
+     * é gratuito, null diz que o custo é desconhecido.
+     */
+    private function registrarCustoDoItem(ItemMovimentacao $item, array $lotesConsumidos, float $qtdLiberar): void
+    {
+        $valorAcumulado = 0.0;
+        $qtdComPreco    = 0.0;
+
+        foreach ($lotesConsumidos as $consumo) {
+            $preco = $consumo['valor_unitario'] ?? null;
+            $qtd   = (float) ($consumo['qtd'] ?? 0);
+
+            if ($preco !== null && $qtd > 0) {
+                $valorAcumulado += $preco * $qtd;
+                $qtdComPreco    += $qtd;
+            }
+        }
+
+        if ($qtdComPreco <= 0) {
+            $item->valor_unitario = null;
+            $item->valor_total    = null;
+            return;
+        }
+
+        $medioPonderado = $valorAcumulado / $qtdComPreco;
+
+        $item->valor_unitario = round($medioPonderado, 4);
+        // Cobra a quantidade liberada inteira pelo médio, inclusive a parcela
+        // vinda de lotes sem preço — é a aproximação menos enganosa disponível.
+        $item->valor_total    = round($medioPonderado * $qtdLiberar, 4);
+    }
+
     private function transferirLotesFifo(int $produtoId, int $setorOrigemId, ?int $setorDestinoId, float $qtdLiberar): array
     {
         $restante = intval($qtdLiberar);
@@ -1066,7 +1160,11 @@ class MovimentacaoController extends Controller
             $lotesConsumidos[] = [
                 'lote' => $lote->lote,
                 'data_vencimento' => $dataVenc,
-                'qtd' => intval($qtdDeducao)
+                'qtd' => intval($qtdDeducao),
+                // Custo do lote no momento do consumo. Guardado aqui porque
+                // depois é impossível reconstruí-lo: o lote pode ser reabastecido
+                // por outra nota com preço diferente.
+                'valor_unitario' => $lote->valor_unitario !== null ? (float) $lote->valor_unitario : null,
             ];
 
             Log::info('EstoqueLote origem descontado', [
@@ -1088,9 +1186,15 @@ class MovimentacaoController extends Controller
                         'data_vencimento'       => $lote->data_vencimento,
                         'data_fabricacao'       => $lote->data_fabricacao,
                         'quantidade_disponivel' => 0,
+                        'valor_unitario'        => $lote->valor_unitario,
                     ]
                 );
                 $loteDestino->quantidade_disponivel = intval($loteDestino->quantidade_disponivel) + intval($qtdDeducao);
+                // O custo acompanha o lote pela cadeia de distribuição; sem isso,
+                // uma saída a partir de um setor intermediário ficaria sem valor.
+                if ($loteDestino->valor_unitario === null && $lote->valor_unitario !== null) {
+                    $loteDestino->valor_unitario = $lote->valor_unitario;
+                }
                 $loteDestino->save();
 
                 Log::info('EstoqueLote destino incrementado', [
@@ -1217,6 +1321,77 @@ class MovimentacaoController extends Controller
             ], 500);
         }
     }
+    /**
+     * Registra quem recebeu fisicamente os itens de uma movimentação aprovada.
+     *
+     * Não movimenta estoque — o débito e o crédito já aconteceram na aprovação.
+     * Serve só para fechar a cadeia de responsáveis da via impressa
+     * (solicitou → autorizou → atendeu → recebeu).
+     */
+    public function confirmarRecebimento(ConfirmarRecebimentoRequest $request, $id)
+    {
+        $mov = Movimentacao::find($id);
+        if (!$mov) {
+            return response()->json(['status' => false, 'message' => 'Movimentação não encontrada.'], 404);
+        }
+
+        if ($mov->status_solicitacao !== 'A') {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Só é possível confirmar o recebimento de movimentações aprovadas.'
+            ], 422);
+        }
+
+        if ($mov->recebido_em !== null) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'O recebimento desta movimentação já foi confirmado.'
+            ], 422);
+        }
+
+        // Numa devolução os papéis invertem: quem recebe de volta é o setor de
+        // origem do registro, não o de destino.
+        $setorReceptorId = $mov->tipo === 'D' ? $mov->setor_origem_id : $mov->setor_destino_id;
+
+        $pertenceAoSetor = DB::table('usuario_setor')
+            ->where('usuario_id', auth()->id())
+            ->where('setor_id', $setorReceptorId)
+            ->exists();
+
+        if (!$pertenceAoSetor && !auth()->user()->isSuperAdmin()) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Apenas usuários do setor que recebeu os itens podem confirmar o recebimento.'
+            ], 403);
+        }
+
+        try {
+            $mov->recebedor_usuario_id = auth()->id();
+            $mov->recebido_em = now();
+
+            $observacaoRecebimento = $request->input('observacao');
+            if (!empty($observacaoRecebimento)) {
+                $mov->observacao = trim(($mov->observacao ?? '') . "\n[Recebimento] " . $observacaoRecebimento);
+            }
+
+            $mov->save();
+
+            $mov->load(['usuario', 'aprovador', 'atendente', 'recebedor']);
+
+            return response()->json([
+                'status'  => true,
+                'message' => 'Recebimento confirmado com sucesso.',
+                'data'    => $mov,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Erro ao confirmar recebimento: ' . $e->getMessage(), ['movimentacao_id' => $id]);
+            return response()->json([
+                'status'  => false,
+                'message' => 'Erro ao confirmar o recebimento.'
+            ], 500);
+        }
+    }
+
     public function devolver(DevolverRequest $request, $id)
     {
         $data = $request->validated();

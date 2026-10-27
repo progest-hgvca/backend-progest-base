@@ -320,6 +320,8 @@ class RelatoriosController extends Controller
                 'setorDestino.polo:id,nome',
                 'usuario:id,name,email',
                 'aprovador:id,name,email',
+                'atendente:id,name,email',
+                'recebedor:id,name,email',
                 'itens.produto:id,nome,codigo_simpas,codigo_barras,grupo_produto_id,unidade_medida_id',
                 'itens.produto.unidadeMedida:id,nome',
                 'itens.produto.grupoProduto:id,nome,tipo'
@@ -538,6 +540,8 @@ class RelatoriosController extends Controller
                 'setorDestino.polo:id,nome',
                 'usuario:id,name,email',
                 'aprovador:id,name,email',
+                'atendente:id,name,email',
+                'recebedor:id,name,email',
                 'itens.produto:id,nome,codigo_simpas,codigo_barras,grupo_produto_id,unidade_medida_id',
                 'itens.produto.unidadeMedida:id,nome',
                 'itens.produto.grupoProduto:id,nome,tipo'
@@ -1849,14 +1853,86 @@ class RelatoriosController extends Controller
     }
 
     /**
-     * Relat�rio Financeiro de Entradas
+     * Setores que o usuário autenticado pode enxergar em relatórios.
+     * Retorna null para super admin (sem restrição).
+     */
+    private function setoresPermitidosDoUsuario(): ?array
+    {
+        $user = auth()->user();
+        if (!$user || $user->isSuperAdmin()) {
+            return null;
+        }
+
+        return DB::table('usuario_setor')
+            ->where('usuario_id', $user->id)
+            ->pluck('setor_id')
+            ->all();
+    }
+
+    /**
+     * O usuário pode ver valores em dinheiro?
+     *
+     * Reaproveita a mesma regra já usada no estoque e nos lotes: valores são
+     * visíveis para super admin, admin da CAF, ou para admin/almoxarife de um
+     * setor com estoque. Sem isso, estes dois relatórios seriam a única porta
+     * aberta para o custo do hospital inteiro.
+     */
+    private function podeVerValoresFinanceiros(): bool
+    {
+        $user = auth()->user();
+        if (!$user) {
+            return false;
+        }
+        if ($user->isSuperAdmin() || $user->isAdminCaf()) {
+            return true;
+        }
+
+        return DB::table('usuario_setor')
+            ->join('setores', 'setores.id', '=', 'usuario_setor.setor_id')
+            ->where('usuario_setor.usuario_id', $user->id)
+            ->whereIn('usuario_setor.perfil', ['admin', 'almoxarife'])
+            ->where('setores.estoque', true)
+            ->exists();
+    }
+
+    private function negarValoresFinanceiros()
+    {
+        return response()->json([
+            'status'  => false,
+            'message' => 'Você não tem permissão para visualizar valores financeiros.'
+        ], 403);
+    }
+
+    /**
+     * Valida e normaliza os filtros comuns aos relatórios financeiros.
+     */
+    private function filtrosFinanceiros(Request $request): array
+    {
+        $validated = validator($request->all(), [
+            'filters.date_from' => 'nullable|date',
+            'filters.date_to'   => 'nullable|date|after_or_equal:filters.date_from',
+            'filters.setor_id'  => 'nullable|exists:setores,id',
+            'filters.polo_id'   => 'nullable|exists:polos,id',
+        ], [
+            'filters.date_to.after_or_equal' => 'A data final deve ser posterior ou igual à data inicial.',
+        ])->validate();
+
+        return $validated['filters'] ?? [];
+    }
+
+    /**
+     * Relatório Financeiro de Entradas — analítico, linha a linha.
+     * POST /api/relatorios/financeiro/entradas
      */
     public function listEntradasFinanceiras(Request $request)
     {
+        if (!$this->podeVerValoresFinanceiros()) {
+            return $this->negarValoresFinanceiros();
+        }
+
         try {
-            $data = $request->all();
-            $filters = $data['filters'] ?? [];
-            
+            $filters = $this->filtrosFinanceiros($request);
+
             $query = DB::table('entrada')
                 ->join('itens_entrada', 'entrada.id', '=', 'itens_entrada.entrada_id')
                 ->join('produtos', 'itens_entrada.produto_id', '=', 'produtos.id')
@@ -1864,104 +1940,331 @@ class RelatoriosController extends Controller
                 ->join('polos', 'setores.polo_id', '=', 'polos.id')
                 ->join('fornecedores', 'entrada.fornecedor_id', '=', 'fornecedores.id')
                 ->select(
+                    'entrada.id as entrada_id',
+                    'entrada.nota_fiscal',
                     'entrada.created_at as data_entrada',
                     'polos.nome as polo',
                     'setores.nome as setor',
                     'fornecedores.razao_social_nome as fornecedor',
                     'produtos.nome as produto',
                     'produtos.codigo_simpas',
+                    'itens_entrada.lote',
                     'itens_entrada.quantidade',
                     'itens_entrada.valor_unitario',
                     DB::raw('COALESCE(itens_entrada.quantidade * itens_entrada.valor_unitario, 0) as subtotal')
                 );
 
-            if (!empty($filters['date_from'])) {
-                $query->whereDate('entrada.created_at as data_entrada', '>=', $filters['date_from']);
-            }
-            if (!empty($filters['date_to'])) {
-                $query->whereDate('entrada.created_at as data_entrada', '<=', $filters['date_to']);
-            }
-            if (!empty($filters['setor_id'])) {
-                $query->where('entrada.setor_id', $filters['setor_id']);
-            }
+            $this->aplicarFiltrosEntradasFinanceiras($query, $filters);
+
+            $totalGeral = (float) (clone $query)
+                ->sum(DB::raw('COALESCE(itens_entrada.quantidade * itens_entrada.valor_unitario, 0)'));
 
             $query->orderBy('entrada.created_at', 'desc');
 
-            $result = $query->paginate(30);
-
-            return response()->json(['status' => true, 'data' => $result]);
-
+            return response()->json([
+                'status'            => true,
+                'data'              => $query->paginate(30),
+                'total_valor'       => $totalGeral,
+                'valor_total_geral' => $totalGeral,
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['status' => false, 'validacao' => true, 'erros' => $e->errors()], 422);
         } catch (\Exception $e) {
-            return response()->json(['status' => false, 'message' => 'Erro ao listar relat�rio financeiro de entradas: ' . $e->getMessage()], 500);
+            Log::error('Erro ao gerar relatório financeiro de entradas: ' . $e->getMessage());
+            return response()->json(['status' => false, 'message' => 'Erro ao gerar o relatório financeiro de entradas.'], 500);
+        }
+    }
+
+    private function aplicarFiltrosEntradasFinanceiras($query, array $filters): void
+    {
+        if (!empty($filters['date_from'])) {
+            $query->whereDate('entrada.created_at', '>=', $filters['date_from']);
+        }
+        if (!empty($filters['date_to'])) {
+            $query->whereDate('entrada.created_at', '<=', $filters['date_to']);
+        }
+        if (!empty($filters['setor_id'])) {
+            $query->where('entrada.setor_id', $filters['setor_id']);
+        }
+        if (!empty($filters['polo_id'])) {
+            $query->where('setores.polo_id', $filters['polo_id']);
+        }
+
+        $permitidos = $this->setoresPermitidosDoUsuario();
+        if ($permitidos !== null) {
+            $query->whereIn('entrada.setor_id', $permitidos);
         }
     }
 
     /**
-     * Relat�rio Financeiro de Sa�das (Movimenta��es)
+     * Relatório Financeiro de Saídas — analítico, linha a linha.
+     * POST /api/relatorios/financeiro/saidas
+     *
+     * O custo vem de `item_movimentacao.valor_unitario`, congelado na aprovação
+     * pelo FIFO. A versão anterior tentava redescobri-lo juntando `itens_entrada`
+     * por (produto_id, lote); como `item_movimentacao.lote` guarda um array JSON
+     * de lotes, esse join quase nunca casava e o relatório vinha zerado.
      */
     public function listSaidasFinanceiras(Request $request)
     {
-        try {
-            $data = $request->all();
-            $filters = $data['filters'] ?? [];
+        if (!$this->podeVerValoresFinanceiros()) {
+            return $this->negarValoresFinanceiros();
+        }
 
-            // Obt�m o custo pegando a entrada mais recente daquele lote e produto
-            $query = DB::table('movimentacao')
-                ->join('item_movimentacao', 'movimentacao.id', '=', 'item_movimentacao.movimentacao_id')
-                ->join('produtos', 'item_movimentacao.produto_id', '=', 'produtos.id')
-                ->join('setores as setor_destino', 'movimentacao.setor_destino_id', '=', 'setor_destino.id')
-                ->leftJoin('itens_entrada', function ($join) {
-                    $join->on('item_movimentacao.produto_id', '=', 'itens_entrada.produto_id')
-                         ->on('item_movimentacao.lote', '=', 'itens_entrada.lote');
-                })
+        try {
+            $filters = $this->filtrosFinanceiros($request);
+
+            $query = $this->baseSaidasFinanceiras()
                 ->select(
                     'movimentacao.id as pedido_id',
-                    'movimentacao.created_at',
+                    'movimentacao.tipo',
+                    'movimentacao.data_hora as created_at',
+                    'setor_origem.nome as setor_origem',
                     'setor_destino.nome as setor_destino',
                     'produtos.nome as produto',
                     'produtos.codigo_simpas',
-                    'produtos.codigo_simpas as codigo_simpass',
                     'item_movimentacao.lote',
                     'item_movimentacao.quantidade_liberada as quantidade',
-                    DB::raw('MAX(itens_entrada.valor_unitario) as valor_unitario'),
-                    DB::raw('MAX(itens_entrada.valor_unitario) * item_movimentacao.quantidade_liberada as valor_total')
-                )
-                ->where('movimentacao.tipo', 'S')
-                ->where('movimentacao.status_solicitacao', 'A') // Aprovados
-                ->groupBy(
-                    'movimentacao.id',
-                    'movimentacao.created_at',
-                    'setor_destino.nome',
-                    'produtos.nome',
-                    'produtos.codigo_simpas',
-                    'item_movimentacao.lote',
-                    'item_movimentacao.quantidade_liberada'
+                    'item_movimentacao.valor_unitario',
+                    DB::raw('COALESCE(item_movimentacao.valor_total, item_movimentacao.valor_unitario * item_movimentacao.quantidade_liberada, 0) as valor_total')
                 );
 
-            if (!empty($filters['date_from'])) {
-                $query->whereDate('movimentacao.created_at', '>=', $filters['date_from']);
-            }
-            if (!empty($filters['date_to'])) {
-                $query->whereDate('movimentacao.created_at', '<=', $filters['date_to']);
-            }
-            if (!empty($filters['setor_id'])) {
-                $query->where('movimentacao.setor_destino_id', $filters['setor_id']);
-            }
+            $this->aplicarFiltrosSaidasFinanceiras($query, $filters);
 
-            $query->orderBy('movimentacao.created_at', 'desc');
+            $totalGeral = (float) (clone $query)
+                ->sum(DB::raw('COALESCE(item_movimentacao.valor_total, item_movimentacao.valor_unitario * item_movimentacao.quantidade_liberada, 0)'));
 
-            $totalGeral = (clone $query)->get()->sum('valor_total');
-            $result = $query->paginate(30);
+            $query->orderBy('movimentacao.data_hora', 'desc');
+
+            return response()->json([
+                'status'            => true,
+                'data'              => $query->paginate(30),
+                'total_valor'       => $totalGeral,
+                'valor_total_geral' => $totalGeral,
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['status' => false, 'validacao' => true, 'erros' => $e->errors()], 422);
+        } catch (\Exception $e) {
+            Log::error('Erro ao gerar relatório financeiro de saídas: ' . $e->getMessage());
+            return response()->json(['status' => false, 'message' => 'Erro ao gerar o relatório financeiro de saídas.'], 500);
+        }
+    }
+
+    /**
+     * Query base das saídas valoradas.
+     *
+     * Considera requisições ('S' e 'T' — são a mesma operação, criada por telas
+     * diferentes) e consumo interno ('C'). Devoluções ficam de fora: elas
+     * devolvem valor ao estoque e seriam contadas como saída.
+     */
+    private function baseSaidasFinanceiras()
+    {
+        return DB::table('movimentacao')
+            ->join('item_movimentacao', 'movimentacao.id', '=', 'item_movimentacao.movimentacao_id')
+            ->join('produtos', 'item_movimentacao.produto_id', '=', 'produtos.id')
+            ->leftJoin('setores as setor_origem', 'movimentacao.setor_origem_id', '=', 'setor_origem.id')
+            ->leftJoin('setores as setor_destino', 'movimentacao.setor_destino_id', '=', 'setor_destino.id')
+            ->whereIn('movimentacao.tipo', ['S', 'T', 'C'])
+            ->where('movimentacao.status_solicitacao', 'A')
+            ->where('item_movimentacao.quantidade_liberada', '>', 0);
+    }
+
+    private function aplicarFiltrosSaidasFinanceiras($query, array $filters): void
+    {
+        if (!empty($filters['date_from'])) {
+            $query->whereDate('movimentacao.data_hora', '>=', $filters['date_from']);
+        }
+        if (!empty($filters['date_to'])) {
+            $query->whereDate('movimentacao.data_hora', '<=', $filters['date_to']);
+        }
+        if (!empty($filters['setor_id'])) {
+            $query->where(function ($q) use ($filters) {
+                $q->where('movimentacao.setor_destino_id', $filters['setor_id'])
+                  ->orWhere('movimentacao.setor_origem_id', $filters['setor_id']);
+            });
+        }
+        if (!empty($filters['polo_id'])) {
+            $query->where(function ($q) use ($filters) {
+                $q->where('setor_destino.polo_id', $filters['polo_id'])
+                  ->orWhere('setor_origem.polo_id', $filters['polo_id']);
+            });
+        }
+
+        $permitidos = $this->setoresPermitidosDoUsuario();
+        if ($permitidos !== null) {
+            $query->where(function ($q) use ($permitidos) {
+                $q->whereIn('movimentacao.setor_origem_id', $permitidos)
+                  ->orWhereIn('movimentacao.setor_destino_id', $permitidos);
+            });
+        }
+    }
+
+    /**
+     * Relatório Financeiro consolidado POR PEDIDO.
+     * POST /api/relatorios/financeiro/por-pedido
+     *
+     * Uma linha por requisição, com o valor total do que saiu nela.
+     */
+    public function listFinanceiroPorPedido(Request $request)
+    {
+        if (!$this->podeVerValoresFinanceiros()) {
+            return $this->negarValoresFinanceiros();
+        }
+
+        try {
+            $filters = $this->filtrosFinanceiros($request);
+
+            $query = $this->baseSaidasFinanceiras()
+                ->leftJoin('users', 'movimentacao.usuario_id', '=', 'users.id')
+                ->select(
+                    'movimentacao.id as pedido_id',
+                    'movimentacao.tipo',
+                    'movimentacao.data_hora',
+                    'movimentacao.status_solicitacao',
+                    'setor_origem.nome as setor_origem',
+                    'setor_destino.nome as setor_destino',
+                    'users.name as solicitante',
+                    DB::raw('COUNT(DISTINCT item_movimentacao.produto_id) as total_itens'),
+                    DB::raw('SUM(item_movimentacao.quantidade_liberada) as total_quantidade'),
+                    DB::raw('SUM(COALESCE(item_movimentacao.valor_total, item_movimentacao.valor_unitario * item_movimentacao.quantidade_liberada, 0)) as valor_total')
+                )
+                ->groupBy(
+                    'movimentacao.id',
+                    'movimentacao.tipo',
+                    'movimentacao.data_hora',
+                    'movimentacao.status_solicitacao',
+                    'setor_origem.nome',
+                    'setor_destino.nome',
+                    'users.name'
+                );
+
+            $this->aplicarFiltrosSaidasFinanceiras($query, $filters);
+
+            // O total geral precisa vir de uma query sem GROUP BY, senão soma
+            // apenas a página corrente.
+            $totalGeral = $this->totalGeralSaidas($filters);
+
+            $query->orderBy('movimentacao.data_hora', 'desc');
+
+            return response()->json([
+                'status'            => true,
+                'data'              => $query->paginate(30),
+                'total_valor'       => $totalGeral,
+                'valor_total_geral' => $totalGeral,
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['status' => false, 'validacao' => true, 'erros' => $e->errors()], 422);
+        } catch (\Exception $e) {
+            Log::error('Erro ao gerar relatório financeiro por pedido: ' . $e->getMessage());
+            return response()->json(['status' => false, 'message' => 'Erro ao gerar o relatório financeiro por pedido.'], 500);
+        }
+    }
+
+    private function totalGeralSaidas(array $filters): float
+    {
+        $q = $this->baseSaidasFinanceiras();
+        $this->aplicarFiltrosSaidasFinanceiras($q, $filters);
+
+        return (float) $q->sum(DB::raw('COALESCE(item_movimentacao.valor_total, item_movimentacao.valor_unitario * item_movimentacao.quantidade_liberada, 0)'));
+    }
+
+    /**
+     * Relatório Financeiro consolidado POR SETOR.
+     * POST /api/relatorios/financeiro/por-setor
+     *
+     * Para cada setor no período: quanto entrou (notas fiscais), quanto saiu
+     * (itens liberados a partir dele) e o saldo entre os dois.
+     */
+    public function listFinanceiroPorSetor(Request $request)
+    {
+        if (!$this->podeVerValoresFinanceiros()) {
+            return $this->negarValoresFinanceiros();
+        }
+
+        try {
+            $filters = $this->filtrosFinanceiros($request);
+
+            // Entradas por setor (valor das notas fiscais recebidas)
+            $entradas = DB::table('entrada')
+                ->join('itens_entrada', 'entrada.id', '=', 'itens_entrada.entrada_id')
+                ->join('setores', 'entrada.setor_id', '=', 'setores.id')
+                ->select(
+                    'entrada.setor_id',
+                    DB::raw('SUM(COALESCE(itens_entrada.quantidade * itens_entrada.valor_unitario, 0)) as total')
+                )
+                ->groupBy('entrada.setor_id');
+
+            $this->aplicarFiltrosEntradasFinanceiras($entradas, $filters);
+            $totaisEntrada = $entradas->pluck('total', 'setor_id');
+
+            // Saídas por setor de origem (quem forneceu/deu baixa)
+            $saidas = $this->baseSaidasFinanceiras()
+                ->select(
+                    'movimentacao.setor_origem_id as setor_id',
+                    DB::raw('SUM(COALESCE(item_movimentacao.valor_total, item_movimentacao.valor_unitario * item_movimentacao.quantidade_liberada, 0)) as total')
+                )
+                ->groupBy('movimentacao.setor_origem_id');
+
+            $this->aplicarFiltrosSaidasFinanceiras($saidas, $filters);
+            $totaisSaida = $saidas->pluck('total', 'setor_id');
+
+            // Consumo por setor de destino (quanto cada setor recebeu em valor)
+            $recebido = $this->baseSaidasFinanceiras()
+                ->select(
+                    'movimentacao.setor_destino_id as setor_id',
+                    DB::raw('SUM(COALESCE(item_movimentacao.valor_total, item_movimentacao.valor_unitario * item_movimentacao.quantidade_liberada, 0)) as total')
+                )
+                ->groupBy('movimentacao.setor_destino_id');
+
+            $this->aplicarFiltrosSaidasFinanceiras($recebido, $filters);
+            $totaisRecebido = $recebido->pluck('total', 'setor_id');
+
+            $setorIds = collect($totaisEntrada->keys())
+                ->merge($totaisSaida->keys())
+                ->merge($totaisRecebido->keys())
+                ->filter()
+                ->unique()
+                ->values();
+
+            $setores = DB::table('setores')
+                ->leftJoin('polos', 'setores.polo_id', '=', 'polos.id')
+                ->whereIn('setores.id', $setorIds)
+                ->get(['setores.id', 'setores.nome', 'setores.categoria', 'polos.sigla as polo_sigla', 'polos.nome as polo'])
+                ->keyBy('id');
+
+            $linhas = $setorIds->map(function ($setorId) use ($setores, $totaisEntrada, $totaisSaida, $totaisRecebido) {
+                $setor        = $setores->get($setorId);
+                $totalEntrada = (float) ($totaisEntrada[$setorId] ?? 0);
+                $totalSaida   = (float) ($totaisSaida[$setorId] ?? 0);
+
+                return [
+                    'setor_id'       => $setorId,
+                    'setor'          => $setor->nome ?? ('Setor #' . $setorId),
+                    'polo'           => $setor->polo_sigla ?? $setor->polo ?? null,
+                    'categoria'      => $setor->categoria ?? null,
+                    'total_entradas' => round($totalEntrada, 2),
+                    'total_saidas'   => round($totalSaida, 2),
+                    'total_recebido' => round((float) ($totaisRecebido[$setorId] ?? 0), 2),
+                    'saldo'          => round($totalEntrada - $totalSaida, 2),
+                ];
+            })
+            ->sortByDesc('total_saidas')
+            ->values();
 
             return response()->json([
                 'status' => true,
-                'data' => $result,
-                'total_valor' => (float)$totalGeral,
-                'valor_total_geral' => (float)$totalGeral
+                'data'   => $linhas,
+                'totalizadores' => [
+                    'total_entradas' => round((float) $linhas->sum('total_entradas'), 2),
+                    'total_saidas'   => round((float) $linhas->sum('total_saidas'), 2),
+                    'setores'        => $linhas->count(),
+                ],
             ]);
-
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['status' => false, 'validacao' => true, 'erros' => $e->errors()], 422);
         } catch (\Exception $e) {
-            return response()->json(['status' => false, 'message' => 'Erro ao listar relat�rio financeiro de sa�das: ' . $e->getMessage()], 500);
+            Log::error('Erro ao gerar relatório financeiro por setor: ' . $e->getMessage());
+            return response()->json(['status' => false, 'message' => 'Erro ao gerar o relatório financeiro por setor.'], 500);
         }
     }
 }
